@@ -114,12 +114,39 @@ namespace D365ExportToCsv
                     foreach (var attribute in entity.Attributes)
                     {
                         // Handle null values and replace commas in data
-                        var value = attribute.Value?.ToString()?.Replace(",", ";") ?? "";
+                        var value = GetAttributeValue(attribute.Value); //attribute.Value?.ToString()?.Replace(",", ";") ?? "";
                         writer.Write($"{value},");
                     }
                     writer.WriteLine();
                 }
             }
         }
+
+private static string GetAttributeValue(object attributeValue)
+{
+    if (attributeValue == null)
+    {
+        return "";
+    }
+
+    switch (attributeValue)
+    {
+        // Handle OptionSetValue (Picklist)
+        case OptionSetValue optionSetValue:
+            return optionSetValue.Value.ToString(); // Or resolve to label using metadata service if needed
+
+        // Handle Money
+        case Money money:
+            return money.Value.ToString();
+
+        // Handle EntityReference (Lookup)
+        case EntityReference entityReference:
+            return entityReference.Name ?? entityReference.Id.ToString(); // Use Name if available, otherwise use GUID
+
+        // Handle other types (int, string, bool, etc.)
+        default:
+            return attributeValue.ToString();
+    }
+}
     }
 }
