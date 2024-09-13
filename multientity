@@ -1,0 +1,125 @@
+#test multientity export
+
+using System;
+using System.IO;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Tooling.Connector;
+using Microsoft.Xrm.Sdk.Query;
+using System.Collections.Generic;
+
+namespace D365ExportToCsv
+{
+    class Program
+    {
+        private static string csvDirectoryPath = "ExportedData"; // Directory path for the exported CSV files
+
+        static void Main(string[] args)
+        {
+            // Create the directory for storing CSV files
+            if (!Directory.Exists(csvDirectoryPath))
+            {
+                Directory.CreateDirectory(csvDirectoryPath);
+            }
+
+            // Connect to Dynamics 365
+            var service = ConnectToCRM();
+            if (service == null)
+            {
+                Console.WriteLine("Failed to connect to Dynamics 365.");
+                return;
+            }
+
+            // List of entities to export (Add more entity logical names here as needed)
+            List<string> entitiesToExport = new List<string> { "account", "contact", "opportunity" };
+
+            foreach (var entityLogicalName in entitiesToExport)
+            {
+                Console.WriteLine($"Exporting data for entity: {entityLogicalName}");
+                
+                // Retrieve all records for the entity
+                var entityRecords = RetrieveAllEntities(service, entityLogicalName);
+
+                // Export the data to CSV
+                ExportEntitiesToCsv(entityRecords, entityLogicalName);
+
+                Console.WriteLine($"{entityLogicalName} data export completed!");
+            }
+        }
+
+        private static IOrganizationService ConnectToCRM()
+        {
+            string connectionString = "AuthType=OAuth;Username=your-username;Password=your-password;Url=https://your-instance.crm.dynamics.com;AppId=your-app-id;RedirectUri=your-redirect-uri;LoginPrompt=Auto";
+
+            CrmServiceClient crmServiceClient = new CrmServiceClient(connectionString);
+            return crmServiceClient.OrganizationServiceProxy;
+        }
+
+        private static List<Entity> RetrieveAllEntities(IOrganizationService service, string entityLogicalName)
+        {
+            List<Entity> entities = new List<Entity>();
+
+            // Define the QueryExpression to retrieve all columns for the entity
+            QueryExpression query = new QueryExpression(entityLogicalName)
+            {
+                ColumnSet = new ColumnSet(true), // Retrieve all columns
+                PageInfo = new PagingInfo
+                {
+                    Count = 5000,  // Maximum records per page
+                    PageNumber = 1
+                }
+            };
+
+            EntityCollection results;
+            do
+            {
+                // Execute the query to retrieve entity records
+                results = service.RetrieveMultiple(query);
+                entities.AddRange(results.Entities);
+
+                // Check if there are more records to retrieve (pagination)
+                if (results.MoreRecords)
+                {
+                    query.PageInfo.PageNumber++;
+                    query.PageInfo.PagingCookie = results.PagingCookie;
+                }
+            } while (results.MoreRecords); // Loop until all records are retrieved
+
+            return entities;
+        }
+
+        private static void ExportEntitiesToCsv(List<Entity> entities, string entityLogicalName)
+        {
+            // Define CSV file path for the entity
+            string csvFilePath = Path.Combine(csvDirectoryPath, $"{entityLogicalName}_Data.csv");
+
+            // Create the CSV file and write headers
+            using (var writer = new StreamWriter(csvFilePath))
+            {
+                bool headerWritten = false;
+
+                foreach (var entity in entities)
+                {
+                    if (!headerWritten)
+                    {
+                        // Write the header row with all the column names (attribute names)
+                        foreach (var attribute in entity.Attributes)
+                        {
+                            writer.Write($"{attribute.Key},");
+                        }
+                        writer.WriteLine();
+                        headerWritten = true;
+                    }
+
+                    // Write the data rows for each entity
+                    foreach (var attribute in entity.Attributes)
+                    {
+                        // Handle null values and replace commas in data
+                        var value = attribute.Value?.ToString()?.Replace(",", ";") ?? "";
+                        writer.Write($"{value},");
+                    }
+                    writer.WriteLine();
+                }
+            }
+        }
+    }
+}
