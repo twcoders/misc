@@ -1,0 +1,43 @@
+trigger: none  # No automatic trigger
+
+schedules:
+  - cron: "0 2 * * *"  # Runs daily at 2 AM UTC
+    displayName: Daily Export
+    branches:
+      include:
+        - main  # Change to your branch
+    always: true
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- task: PowerPlatformToolInstaller@2
+  displayName: 'Install Power Platform Tools'
+
+- task: PowerPlatformExportSolution@2
+  displayName: 'Export D365 Solution'
+  inputs:
+    authenticationType: 'ServicePrincipal'
+    environmentUrl: 'https://yourorg.crm.dynamics.com'
+    clientId: 'YOUR_CLIENT_ID'
+    clientSecret: 'YOUR_CLIENT_SECRET'
+    tenantId: 'YOUR_TENANT_ID'
+    solutionName: 'YourSolutionName'
+    solutionOutputFile: '$(Build.ArtifactStagingDirectory)/YourSolution.zip'
+    managed: false
+
+- task: PowerPlatformUnpackSolution@2
+  displayName: 'Unpack Solution for Source Control'
+  inputs:
+    solutionInputFile: '$(Build.ArtifactStagingDirectory)/YourSolution.zip'
+    solutionTargetFolder: '$(Build.SourcesDirectory)/Solutions/YourSolution'
+    solutionType: 'Unmanaged'
+
+- script: |
+    git config --global user.email "devops-bot@example.com"
+    git config --global user.name "Azure DevOps Bot"
+    git add .
+    git commit -m "Daily check-in of D365 solution"
+    git push origin main
+  displayName: 'Commit and Push to Azure DevOps Repo'
