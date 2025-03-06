@@ -1,0 +1,57 @@
+trigger:
+  branches:
+    include:
+      - main  # Sync only when changes occur in the main branch
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  GITHUB_REPO: 'username/repository'
+  AZURE_REPO: 'https://dev.azure.com/org/project/_git/repo'
+  GITHUB_PAT: $(GITHUB_PAT)  # Securely stored in Azure DevOps
+
+steps:
+  - checkout: self  # Get the latest code from Azure DevOps
+
+  - script: |
+      echo "Setting up GitHub authentication"
+      git config --global user.email "devops-bot@example.com"
+      git config --global user.name "DevOps Sync Bot"
+      
+      echo "Cloning public GitHub repo"
+      git clone --depth=1 https://github.com/$(GITHUB_REPO).git github_repo
+      cd github_repo
+
+      echo "Fetching latest changes from Azure DevOps"
+      git remote add azure $(AZURE_REPO)
+      git fetch azure
+
+      echo "Checking for changes..."
+      git diff --quiet azure/main || CHANGES_DETECTED="yes"
+
+      if [ "$CHANGES_DETECTED" == "yes" ]; then
+        echo "Merging DevOps changes into GitHub..."
+        git merge azure/main --no-edit
+        git push https://$(GITHUB_PAT)@github.com/$(GITHUB_REPO).git main
+      else
+        echo "No changes detected from Azure DevOps."
+      fi
+    displayName: 'Sync from DevOps to Public GitHub'
+
+  - script: |
+      echo "Fetching latest changes from GitHub"
+      cd github_repo
+      git fetch origin
+
+      echo "Checking for changes..."
+      git diff --quiet origin/main || CHANGES_DETECTED="yes"
+
+      if [ "$CHANGES_DETECTED" == "yes" ]; then
+        echo "Merging GitHub changes into Azure DevOps..."
+        git merge origin/main --no-edit
+        git push azure main
+      else
+        echo "No changes detected from GitHub."
+      fi
+    displayName: 'Sync from Public GitHub to DevOps'
