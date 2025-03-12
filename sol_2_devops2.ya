@@ -1,0 +1,50 @@
+trigger: none  # No continuous integration trigger
+
+schedules:
+  - cron: "0 2 * * *"  # Runs every night at 2 AM UTC
+    displayName: Nightly D365 Solution Export
+    branches:
+      include:
+        - main
+    always: true  # Run even if there are no changes
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solutionName: 'YourSolutionName'
+  exportPath: '$(Build.ArtifactStagingDirectory)/solutions'
+  repoPath: '$(Build.SourcesDirectory)'
+  d365EnvironmentUrl: 'https://yourorg.crm.dynamics.com'
+
+steps:
+  - task: PowerPlatformToolInstaller@2
+    displayName: 'Install Power Platform Tools'
+
+  - task: PowerPlatformExportSolution@2
+    displayName: 'Export Solution from D365'
+    inputs:
+      authenticationType: 'ServicePrincipal'
+      powerPlatformServiceConnection: 'MyD365ServiceConnection'  # Use the service connection name
+      environmentUrl: '$(d365EnvironmentUrl)'
+      solutionName: '$(solutionName)'
+      solutionOutputFile: '$(exportPath)/$(solutionName).zip'
+      overwrite: true
+      managed: false
+
+  - script: |
+      mkdir $(repoPath)/solutions
+      cp $(exportPath)/$(solutionName).zip $(repoPath)/solutions/
+    displayName: 'Copy Solution to Repo Folder'
+
+  - task: PowerShell@2
+    displayName: 'Commit and Push to Repo'
+    inputs:
+      targetType: inline
+      script: |
+        cd $(repoPath)
+        git config user.email "pipeline@devops.com"
+        git config user.name "DevOps Pipeline"
+        git add solutions/$(solutionName).zip
+        git commit -m "Nightly export of $(solutionName) - $(Build.BuildId)" || echo "No changes to commit"
+        git push
