@@ -1,0 +1,73 @@
+trigger: none  # No continuous integration trigger
+
+schedules:
+  - cron: "0 2 * * 1-5"  # Runs at 2 AM UTC, Monday to Friday
+    displayName: Nightly D365 Solution Export
+    branches:
+      include:
+        - main
+    always: true  # Run even if there are no changes
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solutionName: 'YourSolutionName'
+  exportPath: '$(Build.ArtifactStagingDirectory)/solutions'
+  unpackPath: '$(Build.ArtifactStagingDirectory)/unpacked'
+  repoPath: '$(Build.SourcesDirectory)'
+  d365EnvironmentUrl: 'https://yourorg.crm.dynamics.com'
+  clientId: '$(clientId)'  # Set as a pipeline secret variable
+  clientSecret: '$(clientSecret)'  # Set as a pipeline secret variable
+  tenantId: '$(tenantId)'  # Set as a pipeline secret variable
+
+steps:
+  - task: PowerPlatformToolInstaller@2
+    displayName: 'Install Power Platform Tools'
+
+  - script: |
+      pac auth create --url $(d365EnvironmentUrl) --clientId $(clientId) --clientSecret $(clientSecret) --tenantId $(tenantId)
+      pac solution export --name $(solutionName) --outputFile "$(exportPath)/$(solutionName).zip" --managed false --overwrite
+    displayName: 'Export Solution from D365'
+
+  - task: PowerShell@2
+    displayName: 'Unpack Solution ZIP'
+    inputs:
+      targetType: inline
+      script: |
+        Expand-Archive -Path "$(exportPath)/$(solutionName).zip" -DestinationPath "$(unpackPath)" -Force
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Solution ZIP and Unpacked Files'
+    inputs:
+      targetPath: '$(exportPath)'
+      artifact: 'd365-solution-zip'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Unpacked Solution Files'
+    inputs:
+      targetPath: '$(unpackPath)'
+      artifact: 'd365-unpacked-solution'
+
+  - script: |
+      mkdir -p $(repoPath)/solutions/unpacked
+      cp -r $(unpackPath)/* $(repoPath)/solutions/unpacked/
+      cp $(exportPath)/$(solutionName).zip $(repoPath)/solutions/
+    displayName: 'Copy Solution Files to Repo Folder'
+
+  - task: PowerShell@2
+    displayName: 'Commit and Push to Repo'
+    inputs:
+      targetType: inline
+      script: |
+        cd $(repoPath)
+        git config user.email "pipeline@devops.com"
+        git config user.name "DevOps Pipeline"
+        git add solutions/$(solutionName).zip
+        git add solutions/unpacked/*
+        git diff --quiet && git diff --staged --quiet || (
+          git commit -m "Nightly export and unpack of $(solutionName) - $(Build.BuildId)"
+          git push
+        )
+    env:
+      GIT_TRACE: 1
