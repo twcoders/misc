@@ -1,0 +1,192 @@
+✅ Final Checklist
+
+✅ API secured with Azure AD	✔️
+✅ Dockerized and deployed to K8s	✔️
+✅ Power Automate makes secured call	✔️
+✅ No custom domain required	✔️
+✅ You build and push Docker	✔️
+✅ JSON flow provided
+
+
+========
+flow:
+{
+  "name": "CallAADSecuredApi",
+  "type": "workflow",
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "actions": {
+      "Http_with_AAD": {
+        "type": "Http",
+        "inputs": {
+          "authentication": {
+            "audience": "api://dotnet-api",
+            "clientId": "<client-id>",
+            "secret": "<client-secret>",
+            "tenant": "<tenant-id>",
+            "type": "ActiveDirectoryOAuth"
+          },
+          "method": "GET",
+          "uri": "http://<external-ip>/api/data"
+        },
+        "runAfter": {}
+      }
+    },
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "Button",
+        "inputs": {}
+      }
+    }
+  }
+}
+
+
+========
+deploy-api.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dotnet-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dotnet-api
+  template:
+    metadata:
+      labels:
+        app: dotnet-api
+    spec:
+      containers:
+        - name: dotnet-api
+          image: yourdockerhub/dotnet-aad-api:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: AzureAd__Instance
+              value: "https://login.microsoftonline.com/"
+            - name: AzureAd__TenantId
+              value: "<your-tenant-id>"
+            - name: AzureAd__ClientId
+              value: "<your-api-app-registration-client-id>"
+            - name: AzureAd__Audience
+              value: "api://dotnet-api"
+---
+Apply the manifest:
+kubectl apply -f deploy-api.yaml
+Then get the external IP:
+kubectl get svc dotnet-api-svc
+
+==================
+.net api
+------
+
+dotnet new webapi -n DotnetAadApi
+cd DotnetAadApi
+-----
+mkdir Controllers
+
+-----
+// Controllers/DataController.cs
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace DotnetAadApi.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class DataController : ControllerBase
+{
+    [HttpGet]
+    [Authorize]
+    public IActionResult Get()
+    {
+        return Ok(new { message = "You have accessed an Azure AD protected API!" });
+    }
+}
+-------
+# Dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+WORKDIR /app
+EXPOSE 80
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish -c Release -o /app/publish
+
+FROM base AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "DotnetAadApi.dll"]
+
+
+------
+@build/push doocker img
+docker build -t yourdockerhub/dotnet-aad-api:latest .
+docker push yourdockerhub/dotnet-aad-api:latest
+
+=======================
+
+sample code:
+// Program.cs
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Identity.Web;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+
+builder.Services.AddAuthorization();
+builder.Services.AddControllers();
+
+var app = builder.Build();
+
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+app.Run();
+
+
+=========
+// appsettings.json
+{
+  "AzureAd": {
+    "Instance": "https://login.microsoftonline.com/",
+    "Domain": "<your-domain>.onmicrosoft.com",
+    "TenantId": "<your-tenant-id>",
+    "ClientId": "<your-api-app-client-id>",
+    "Audience": "api://myapi.yourdomain.com"
+  }
+}
+
+=========
+// Controllers/SampleController.cs
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace MyApi.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class DataController : ControllerBase
+{
+    [HttpGet]
+    [Authorize]
+    public IActionResult GetData()
+    {
+        return Ok(new { message = "Success from AAD-protected API!" });
+    }
+}
+
+===============
+
+
+
+
