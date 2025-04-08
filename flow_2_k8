@@ -129,6 +129,11 @@ ENTRYPOINT ["dotnet", "DotnetAadApi.dll"]
 docker build -t yourdockerhub/dotnet-aad-api:latest .
 docker push yourdockerhub/dotnet-aad-api:latest
 
+or test it
+docker build -t dotnet-aad-api:latest .
+docker run -d -p 8080:8080 --name mycontainer1 dotnet-aad-api:latest
+
+
 =======================
 
 sample code:
