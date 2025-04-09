@@ -190,8 +190,39 @@ public class DataController : ControllerBase
     }
 }
 
-===============
+===============assing AcrPull to k8
+az aks update \
+  --name <your-cluster-name> \
+  --resource-group <your-resource-group> \
+  --attach-acr <your-acr-name>
 
 
 
+======deployment.yaml
 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: <your-acr-name>.azurecr.io/<your-app-name>:latest
+        ports:
+        - containerPort: 80
+
+==
+kubectl apply -f deployment.yaml
+=====
+kubectl get pods
+kubectl port-forward deployment/myapp 8080:80
+curl http://localhost:8080
