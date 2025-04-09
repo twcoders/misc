@@ -226,7 +226,7 @@ kubectl apply -f deployment.yaml
 kubectl get pods
 kubectl port-forward deployment/myapp 8080:80
 curl http://localhost:8080
-========
+========service.yaml
 
 apiVersion: v1
 kind: Service
@@ -242,4 +242,12 @@ spec:
       targetPort: 8080
   loadBalancerSourceRanges:
     - <your-public-ip>/32
+
+
+=======
+kubectl apply -f service.yaml
+kubectl get svc myapp-service
+
+
+
 
