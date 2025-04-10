@@ -110,3 +110,44 @@ clientId	xxxx-xxxx-xxxx-xxxx	No
 clientSecret	xxxxxxxxxxxxxxxxxxxxxxxxxx	Yes
 sharepointSite	https://yourcompany.sharepoint.com/sites/YourSite	No
 documentLibrary	Shared Documents	No
+
+
+========
+
+const { defineConfig } = require('@playwright/test');
+
+module.exports = defineConfig({
+  testDir: './tests',
+   use: {
+    browserName: 'chromium', // Change to 'firefox' or 'webkit' if needed
+    headless: false, // Set to true for headless mode
+    slowMo: 6000,
+  }, 
+  reporter: [['html', { outputFolder: 'playwright-report'}]],
+  retries: 1,
+  //screenshot: 'only-on-failure', //or always if on 
+  //video: 'retain-on-failure', //or on or on-first-retry
+});
+
+
+============
+
+const { test, expect } = require('@playwright/test');
+
+test('test', async ({ page }) => {
+  await page.goto('https://google.com/');
+
+  await expect(page.getByRole('link', { name: 'About' })).toBeVisible();
+  await page.getByRole('link', { name: 'About' }).click();
+
+  await expect(page.getByRole('link', { name: 'News' })).toBeVisible();
+  await page.getByRole('link', { name: 'News' }).click();
+
+  page.pause();
+
+  await page.getByRole('link', { name: 'Donate' }).click();
+
+  page.pause()
+});
+
+
