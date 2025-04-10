@@ -99,3 +99,14 @@ $driveId = (Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} 
 $uploadApi = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$fileName:/content"
 
 Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} -Uri $uploadApi -Method PUT -Body $bytes
+
+
+
+======example
+Example Variable Group Setup:
+Name	Value (example)	Secret?
+tenantId	xxxx-xxxx-xxxx-xxxx	No
+clientId	xxxx-xxxx-xxxx-xxxx	No
+clientSecret	xxxxxxxxxxxxxxxxxxxxxxxxxx	Yes
+sharepointSite	https://yourcompany.sharepoint.com/sites/YourSite	No
+documentLibrary	Shared Documents	No
