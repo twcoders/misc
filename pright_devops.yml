@@ -1,0 +1,101 @@
+//
+trigger:
+  - main  # or your branch name
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'  # Match your Node.js version
+    displayName: 'Install Node.js'
+
+  - script: |
+      npm ci
+      npx playwright install --with-deps
+    displayName: 'Install dependencies and Playwright browsers'
+
+  - script: |
+      npx playwright test --reporter=html
+    displayName: 'Run Playwright Tests'
+
+variables:
+  - group: PlaywrightSharePointSecrets  # Reference the Variable Group
+
+steps:
+  - script: |
+      zip -r playwright-report.zip playwright-report
+    displayName: 'Zip Playwright Report'
+
+  - task: PowerShell@2
+    inputs:
+      filePath: 'upload-to-sharepoint.ps1'
+      arguments: >
+        -tenantId '$(tenantId)'
+        -clientId '$(clientId)'
+        -clientSecret '$(clientSecret)'
+        -siteUrl '$(sharepointSite)'
+        -libraryName '$(documentLibrary)'
+        -uploadPath '$(System.DefaultWorkingDirectory)/playwright-report.zip'
+        -fileName 'PlaywrightReport_$(Build.BuildId).zip'
+    displayName: 'Upload Report to SharePoint'
+
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: 'playwright-report'
+      artifact: 'playwright-report'
+      publishLocation: 'pipeline'
+    displayName: 'Publish HTML Report'
+
+===========
+
+your-repo/
+├── tests/
+│   └── sample.spec.js      ✅ your test
+├── playwright.config.cjs   ✅ config file
+├── package.json            ✅ includes @playwright/test
+└── .azure-pipelines/
+    └── playwright.yml      ✅ pipeline
+
+
+
+========upload-to-sharepoint.ps1===
+
+param(
+  [string]$tenantId,
+  [string]$clientId,
+  [string]$clientSecret,
+  [string]$siteUrl,
+  [string]$libraryName,
+  [string]$uploadPath,
+  [string]$fileName
+)
+
+# Acquire token
+$body = @{
+  grant_type    = "client_credentials"
+  client_id     = $clientId
+  client_secret = $clientSecret
+  scope         = "https://graph.microsoft.com/.default"
+}
+
+$tokenResponse = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" -Body $body
+$accessToken = $tokenResponse.access_token
+
+# Encode site & library
+$siteInfo = Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} `
+  -Uri "https://graph.microsoft.com/v1.0/sites?search=$($siteUrl.Split('/')[-1])"
+
+$siteId = $siteInfo.value[0].id
+
+# Upload the ZIP
+$bytes = [System.IO.File]::ReadAllBytes($uploadPath)
+$uploadUrl = "https://graph.microsoft.com/v1.0/sites/$siteId/drives?$filter=name eq '$libraryName'"
+
+$driveId = (Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} -Uri $uploadUrl).value[0].id
+
+$uploadApi = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$fileName:/content"
+
+Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} -Uri $uploadApi -Method PUT -Body $bytes
