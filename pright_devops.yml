@@ -268,6 +268,54 @@ test('test', async ({ page }) => {
 }
 
 
+===========ps1
+# Input Variables
+$tenantId     = "<YOUR_TENANT_ID>"
+$clientId     = "<YOUR_CLIENT_ID>"
+$clientSecret = "<YOUR_CLIENT_SECRET>"
+$siteUrl      = "https://<your-domain>.sharepoint.com/sites/<your-site-name>"
+$libraryName  = "<YourLibraryName>"  # e.g., "Documents"
+$uploadPath   = "<FullPathToYourZipFile>"  # e.g., "C:\agent\_work\1\s\playwright-report.zip"
+$fileName     = [System.IO.Path]::GetFileName($uploadPath)
+
+# Get Auth Token
+$body = @{
+    client_id     = $clientId
+    scope         = "https://graph.microsoft.com/.default"
+    client_secret = $clientSecret
+    grant_type    = "client_credentials"
+}
+$tokenResponse = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" -Body $body
+$accessToken = $tokenResponse.access_token
+
+# Get Site ID
+$encodedSiteUrl = $siteUrl.Replace("https://", "")
+$siteInfo = Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} `
+  -Uri "https://graph.microsoft.com/v1.0/sites/$encodedSiteUrl"
+$siteId = $siteInfo.id
+
+# Get Drive ID for the Document Library
+$drives = Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} `
+  -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/drives"
+
+$drive = $drives.value | Where-Object { $_.name -eq $libraryName }
+if (-not $drive) {
+    Write-Error "Library '$libraryName' not found on site '$siteUrl'"
+    exit 1
+}
+$driveId = $drive.id
+
+# Upload the ZIP file
+$bytes = [System.IO.File]::ReadAllBytes($uploadPath)
+$uploadUrl = "https://graph.microsoft.com/v1.0/drives/$driveId/root:/$fileName:/content"
+
+$response = Invoke-RestMethod -Headers @{Authorization = "Bearer $accessToken"} `
+  -Uri $uploadUrl -Method PUT -Body $bytes
+
+Write-Output "✅ File uploaded successfully to: $($response.webUrl)"
+
+
+
 
 
 
