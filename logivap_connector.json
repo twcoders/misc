@@ -1,0 +1,134 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "EmailQueueWriter",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowDefinition.json#",
+          "actions": {
+            "Create_SharePoint_Item": {
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('connections')['sharepointonline']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/datasets/default/tables/<YourListName>/items",
+                "body": {
+                  "fields": {
+                    "Title": "@triggerBody()?['title']",
+                    "To": "@triggerBody()?['to']",
+                    "Body": "@triggerBody()?['body']",
+                    "SourceApp": "@triggerBody()?['sourceApp']"
+                  }
+                }
+              },
+              "runAfter": {},
+              "type": "ApiConnection"
+            }
+          },
+          "triggers": {
+            "manual": {
+              "type": "Request",
+              "kind": "Http",
+              "inputs": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": { "type": "string" },
+                    "to": { "type": "string" },
+                    "body": { "type": "string" },
+                    "sourceApp": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "connections": {
+            "value": {
+              "sharepointonline": {
+                "connectionId": "<YOUR_SHAREPOINT_CONNECTION_ID>",
+                "connectionName": "sharepointonline",
+                "id": "/subscriptions/<sub-id>/resourceGroups/<rg-name>/providers/Microsoft.Web/connections/sharepointonline"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
+
+
+
+  Notes
+Replace REPLACE_WITH_YOUR_SECRET with your actual API key.
+
+Replace <YourListName> with your SharePoint list's internal name.
+
+Replace <sub-id>, <rg-name>, and the connectionId with real values from your environment.
+
+
+example
+curl -X POST https://<your-logic-app-url> \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-api-secret" \
+  -d '{
+        "title": "Test Email",
+        "to": "someone@example.com",
+        "body": "<p>Hello!</p>",
+        "sourceApp": "AppA"
+      }'
+
+Create a New SharePoint Connection (manually)
+If it doesn’t exist, create one:
+
+Open your Logic App in Azure Portal
+
+Go to the Designer
+
+Add a step: SharePoint > Create item
+
+You will be prompted to sign in to SharePoint
+
+After successful sign-in, Azure will automatically create a sharepointonline connection in your subscription
+
+📝 This connection is now a managed resource, and you can reuse it.
+
+
+
+ Create SharePoint Connection via ARM Template
+If you want to automate creation using IaC (ARM/Bicep), here’s how:
+
+🔧 ARM Template Snippet
+json
+Copy
+Edit
+{
+  "type": "Microsoft.Web/connections",
+  "apiVersion": "2016-06-01",
+  "name": "sharepointonline",
+  "location": "global",
+  "properties": {
+    "displayName": "SharePoint Online",
+    "api": {
+      "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/sharepointonline')]"
+    },
+    "parameterValues": {
+      "token:clientId": "<your-client-id>",
+      "token:clientSecret": "<your-client-secret>",
+      "token:tenantId": "<your-tenant-id>",
+      "token:resourceUri": "https://graph.microsoft.com"
+    }
+  }
+}
