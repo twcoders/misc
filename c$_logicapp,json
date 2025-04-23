@@ -203,3 +203,11 @@ Aspect | Azure Logic App | C# App in K8s
 🛠 Maintenance | ✅ Very low | ❌ Needs devops effort
 🧩 Integration | ✅ Built-in (SharePoint, etc.) | ❌ Needs Graph API setup
 🔐 Security | ✅ OAuth, RBAC | ✅ But you manage it
+
+===========
+Criteria	Azure Logic Apps	C# on AKS
+Monthly Cost (under 10k users)	~$230	~$190–300+
+Scalability	Auto	You manage scaling
+Maintenance Overhead	Minimal	High
+Security & Compliance	Built-in	Your responsibility
+Customizability	Limited to connectors	Fully customizable
