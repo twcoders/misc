@@ -1,0 +1,6 @@
+Feature                         | SAML Federation (for M365)     | OIDC Integration (per app)
+Scope of Impact                 | Entire domain                 | Specific application only
+Redirect behavior               | All logins redirected to Okta | Only app logins routed to Okta
+Azure AD Authentication Method | Federated                       | Managed
+MFA configuration impact       | Replaced by Okta's MFA         | No effect on Azure MFA
+Use case                       | Microsoft 365 login via Okta   | Login to custom apps via Okta
