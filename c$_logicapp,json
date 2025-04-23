@@ -1,0 +1,205 @@
+curl -X POST http://localhost:5000/queue-email \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-api-key" \
+  -d '{
+    "title": "Test Notification",
+    "to": "user@example.com",
+    "body": "This is a test message from the C# API.",
+    "sourceApp": "App1"
+}'
+------------
+EmailQueueApp C# project has been scaffolded with:
+
+Program.cs: main entrypoint using Minimal API
+
+Models/EmailPayload.cs: email data contract
+
+Helpers/GraphHelper.cs: logic to call Microsoft Graph and add a SharePoint list item
+
+--------
+k8 deployment yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: email-queue-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: email-queue
+  template:
+    metadata:
+      labels:
+        app: email-queue
+    spec:
+      containers:
+      - name: email-queue
+        image: yourregistry/email-queue-app:latest
+        env:
+        - name: AzureAd__TenantId
+          valueFrom:
+            secretKeyRef:
+              name: emailapp-secrets
+              key: tenantId
+        - name: AzureAd__ClientId
+          valueFrom:
+            secretKeyRef:
+              name: emailapp-secrets
+              key: clientId
+        - name: AzureAd__ClientSecret
+          valueFrom:
+            secretKeyRef:
+              name: emailapp-secrets
+              key: clientSecret
+        - name: SharePoint__SiteId
+          value: "your-site-id"
+        - name: SharePoint__ListId
+          value: "your-list-id"
+        - name: ApiKey
+          valueFrom:
+            secretKeyRef:
+              name: emailapp-secrets
+              key: apiKey
+        ports:
+        - containerPort: 80
+
+----------------------------
+  dockerfile----
+
+  FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+WORKDIR /app
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish -c Release -o /app/publish
+
+FROM base AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "EmailQueueApp.dll"]
+
+
+  -----------
+
+  sharpoint--
+public class GraphHelper
+{
+    private readonly IConfiguration _config;
+    private readonly HttpClient _http;
+
+    public GraphHelper(IConfiguration config, HttpClient http)
+    {
+        _config = config;
+        _http = http;
+    }
+
+    public async Task<bool> AddListItemAsync(EmailPayload payload)
+    {
+        // Get token using client credentials
+        var token = await GetAccessToken();
+
+        var siteId = _config["SharePoint:SiteId"];
+        var listId = _config["SharePoint:ListId"];
+
+        var url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listId}/items";
+
+        var body = new
+        {
+            fields = new
+            {
+                Title = payload.Title,
+                To = payload.To,
+                Body = payload.Body,
+                SourceApp = payload.SourceApp
+            }
+        };
+
+        var req = new HttpRequestMessage(HttpMethod.Post, url);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
+
+        var response = await _http.SendAsync(req);
+        return response.IsSuccessStatusCode;
+    }
+
+    private async Task<string> GetAccessToken()
+    {
+        var tenantId = _config["AzureAd:TenantId"];
+        var clientId = _config["AzureAd:ClientId"];
+        var clientSecret = _config["AzureAd:ClientSecret"];
+        var scope = "https://graph.microsoft.com/.default";
+
+        var url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+        var form = new Dictionary<string, string>
+        {
+            { "client_id", clientId },
+            { "client_secret", clientSecret },
+            { "grant_type", "client_credentials" },
+            { "scope", scope }
+        };
+
+        var tokenReq = new HttpRequestMessage(HttpMethod.Post, url) { Content = new FormUrlEncodedContent(form) };
+        var res = await _http.SendAsync(tokenReq);
+        var json = await res.Content.ReadAsStringAsync();
+        return JObject.Parse(json)["access_token"]!.ToString();
+    }
+}
+
+=================
+
+  // Program.cs
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<GraphHelper>(); // handles SharePoint logic
+
+var app = builder.Build();
+
+app.MapPost("/queue-email", async (
+    HttpRequest request,
+    GraphHelper graphHelper,
+    HttpContext context) =>
+{
+    if (!request.Headers.TryGetValue("x-api-key", out var apiKey) ||
+        apiKey != builder.Configuration["ApiKey"])
+    {
+        return Results.StatusCode(403);
+    }
+
+    var payload = await request.ReadFromJsonAsync<EmailPayload>();
+    if (payload == null) return Results.BadRequest();
+
+    var result = await graphHelper.AddListItemAsync(payload);
+    return result ? Results.Ok("Queued") : Results.StatusCode(500);
+});
+
+app.Run();
+
+record EmailPayload(string Title, string To, string Body, string SourceApp);
+
+
+-----
+  Build a lightweight C# API that:
+
+Exposes an HTTP endpoint (secured via API key or bearer token)
+
+Accepts JSON payload
+
+Pushes data to a SharePoint list using Microsoft Graph or SharePoint REST API
+
+📦 1. Tech Stack
+ASP.NET Core Minimal API
+
+Microsoft Graph SDK or SharePoint REST
+
+Hosted in Kubernetes as a container
+
+========
+
+Aspect | Azure Logic App | C# App in K8s
+💵 Cost (low volume) | ✅ Most economical | ❌ Higher base cost
+📈 Cost (high volume) | ⚠️ Grows fast | ✅ Can be cheaper if optimized
+🛠 Maintenance | ✅ Very low | ❌ Needs devops effort
+🧩 Integration | ✅ Built-in (SharePoint, etc.) | ❌ Needs Graph API setup
+🔐 Security | ✅ OAuth, RBAC | ✅ But you manage it
