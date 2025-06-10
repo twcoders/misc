@@ -1,0 +1,69 @@
+// In your existing controller file
+app.controller('SPListController', ['$scope', '$http', function($scope, $http) {
+    $scope.currentPage = 1;
+    $scope.itemsPerPage = 100;
+    $scope.totalItems = 0; // Will be set after first call
+    
+    // Initialize
+    $scope.init = function() {
+        $scope.loadItems();
+    };
+    
+    // Load items with pagination
+    $scope.loadItems = function() {
+        var skip = ($scope.currentPage - 1) * $scope.itemsPerPage;
+        var endpoint = `/_api/web/lists/getbytitle('YourList')/items?$skip=${skip}&$top=${$scope.itemsPerPage}`;
+        
+        $http.get(endpoint).then(function(response) {
+            $scope.items = response.data.d.results;
+            $scope.totalItems = response.data.d.__count;
+        });
+    };
+    
+    $scope.init();
+}]);
+
+
+===========html template
+<!-- In your display template -->
+<div ng-controller="SPListController">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <!-- other columns -->
+            </tr>
+        </thead>
+        <tbody>
+            <tr ng-repeat="item in items">
+                <td>{{item.ID}}</td>
+                <td>{{item.Title}}</td>
+                <!-- other fields -->
+            </tr>
+        </tbody>
+    </table>
+    
+    <div class="pagination">
+        <button ng-disabled="currentPage == 1" ng-click="currentPage=currentPage-1; loadItems()">Previous</button>
+        <span>Page {{currentPage}} of {{Math.ceil(totalItems/itemsPerPage)}}</span>
+        <button ng-disabled="currentPage >= totalItems/itemsPerPage" ng-click="currentPage=currentPage+1; loadItems()">Next</button>
+    </div>
+</div>
+
+==========filter
+// Add to your controller
+$scope.filterField = 'Status'; // Your indexed column
+$scope.filterValue = 'Active';
+
+$scope.applyFilter = function() {
+    var endpoint = `/_api/web/lists/getbytitle('YourList')/items?$filter=${$scope.filterField} eq '${$scope.filterValue}'&$top=${$scope.itemsPerPage}`;
+    
+    $http.get(endpoint).then(function(response) {
+        $scope.items = response.data.d.results;
+        $scope.totalItems = response.data.d.__count;
+        $scope.currentPage = 1;
+    });
+};
+
+
