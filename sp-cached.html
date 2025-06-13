@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html ng-app="spApp">
+<head>
+  <meta charset="utf-8">
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+  <style>
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    th { cursor: pointer; background: #f0f0f0; }
+    input, button { margin: 5px; padding: 4px; }
+    .pagination { margin-top: 10px; }
+    .pagination button { margin-right: 5px; }
+  </style>
+</head>
+<body ng-controller="spController">
+
+  <h3>{{message}}</h3>
+  <button ng-click="loadData()">Load Data (cache first)</button>
+  <button ng-click="refreshData()">Refresh from SharePoint</button>
+  <button ng-click="exportToCSV()">Export Filtered to CSV</button>
+
+  <!-- Filters -->
+  <div>
+    <input type="text" ng-model="filters.Title" placeholder="Filter by Title">
+    <input type="number" ng-model="filters.ID" placeholder="Filter by ID">
+    <label>
+      Created From:
+      <input type="date" ng-model="filters.CreatedFrom">
+    </label>
+    <label>
+      To:
+      <input type="date" ng-model="filters.CreatedTo">
+    </label>
+  </div>
+
+  <!-- Table -->
+  <table>
+    <thead>
+      <tr>
+        <th ng-click="setSort('ID')">ID</th>
+        <th ng-click="setSort('Title')">Title</th>
+        <th ng-click="setSort('Created')">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr ng-repeat="item in getPagedItems()">
+        <td>{{item.ID}}</td>
+        <td>{{item.Title}}</td>
+        <td>{{item.Created | date:'yyyy-MM-dd HH:mm'}}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    <button ng-disabled="currentPage === 0" ng-click="prevPage()">Previous</button>
+    Page {{currentPage + 1}} of {{pageCount()}}
+    <button ng-disabled="currentPage >= pageCount() - 1" ng-click="nextPage()">Next</button>
+  </div>
+
+  <script>
+    var app = angular.module('spApp', []);
+    app.controller('spController', function($scope, $http) {
+      const listName = "YourListName"; // CHANGE THIS
+      const cacheKey = "spListCache";
+      const cacheExpiryKey = "spListCacheExpiry";
+      const cacheTTL = 1000 * 60 * 5;
+
+      $scope.items = [];
+      $scope.filters = {};
+      $scope.sortColumn = 'ID';
+      $scope.sortReverse = false;
+      $scope.currentPage = 0;
+      $scope.pageSize = 10;
+
+      function isCacheValid() {
+        const expiry = localStorage.getItem(cacheExpiryKey);
+        return expiry && new Date().getTime() < parseInt(expiry);
+      }
+
+      function saveToCache(data) {
+        localStorage.setItem(cacheKey, JSON.stringify(data));
+        localStorage.setItem(cacheExpiryKey, (new Date().getTime() + cacheTTL).toString());
+      }
+
+      function getFromCache() {
+        const cached = localStorage.getItem(cacheKey);
+        return cached ? JSON.parse(cached) : [];
+      }
+
+      async function fetchAllItems(url, accumulatedItems = []) {
+        const response = await $http({
+          method: "GET",
+          url: url,
+          headers: { "Accept": "application/json;odata=verbose" }
+        });
+        const data = response.data.d;
+        const newItems = accumulatedItems.concat(data.results);
+
+        if (data.__next) {
+          return fetchAllItems(data.__next, newItems);
+        } else {
+          return newItems;
+        }
+      }
+
+      $scope.loadData = async function () {
+        if (isCacheValid()) {
+          $scope.items = getFromCache();
+          $scope.message = "Loaded from localStorage (" + $scope.items.length + " records)";
+        } else {
+          $scope.message = "Fetching from SharePoint...";
+          const endpoint = _spPageContextInfo.webAbsoluteUrl +
+            "/_api/web/lists/getbytitle('" + listName + "')/items?$top=500&$orderby=ID asc";
+          try {
+            const allItems = await fetchAllItems(endpoint);
+            $scope.items = allItems;
+            saveToCache(allItems);
+            $scope.message = "Fetched and cached " + allItems.length + " items.";
+          } catch (err) {
+            console.error(err);
+            $scope.message = "Error fetching from SharePoint.";
+          }
+        }
+      };
+
+      $scope.refreshData = async function () {
+        $scope.message = "Refreshing from SharePoint...";
+        const endpoint = _spPageContextInfo.webAbsoluteUrl +
+          "/_api/web/lists/getbytitle('" + listName + "')/items?$top=500&$orderby=ID asc";
+        try {
+          const allItems = await fetchAllItems(endpoint);
+          $scope.items = allItems;
+          saveToCache(allItems);
+          $scope.message = "Refreshed and cached " + allItems.length + " items.";
+        } catch (err) {
+          console.error(err);
+          $scope.message = "Error refreshing.";
+        }
+      };
+
+      $scope.setSort = function(column) {
+        if ($scope.sortColumn === column) {
+          $scope.sortReverse = !$scope.sortReverse;
+        } else {
+          $scope.sortColumn = column;
+          $scope.sortReverse = false;
+        }
+      };
+
+      $scope.getFilteredItems = function () {
+        return $scope.items
+          .filter(function (item) {
+            const titleMatch = !$scope.filters.Title || item.Title?.toLowerCase().includes($scope.filters.Title.toLowerCase());
+            const idMatch = !$scope.filters.ID || item.ID == $scope.filters.ID;
+
+            const createdDate = new Date(item.Created);
+            const fromDate = $scope.filters.CreatedFrom ? new Date($scope.filters.CreatedFrom) : null;
+            const toDate = $scope.filters.CreatedTo ? new Date($scope.filters.CreatedTo) : null;
+
+            const fromMatch = !fromDate || createdDate >= fromDate;
+            const toMatch = !toDate || createdDate <= toDate;
+
+            return titleMatch && idMatch && fromMatch && toMatch;
+          })
+          .sort(function (a, b) {
+            let valA = a[$scope.sortColumn];
+            let valB = b[$scope.sortColumn];
+            if (typeof valA === 'string') valA = valA.toLowerCase();
+            if (typeof valB === 'string') valB = valB.toLowerCase();
+            if (valA < valB) return $scope.sortReverse ? 1 : -1;
+            if (valA > valB) return $scope.sortReverse ? -1 : 1;
+            return 0;
+          });
+      };
+
+      $scope.getPagedItems = function () {
+        const filtered = $scope.getFilteredItems();
+        const start = $scope.currentPage * $scope.pageSize;
+        return filtered.slice(start, start + $scope.pageSize);
+      };
+
+      $scope.pageCount = function () {
+        return Math.ceil($scope.getFilteredItems().length / $scope.pageSize);
+      };
+
+      $scope.prevPage = function () {
+        if ($scope.currentPage > 0) $scope.currentPage--;
+      };
+
+      $scope.nextPage = function () {
+        if ($scope.currentPage < $scope.pageCount() - 1) $scope.currentPage++;
+      };
+
+      $scope.exportToCSV = function () {
+        const rows = $scope.getFilteredItems();
+        const headers = ['ID', 'Title', 'Created'];
+        const csvContent = [headers.join(",")].concat(rows.map(item =>
+          [item.ID, `"${item.Title}"`, new Date(item.Created).toISOString()].join(",")
+        )).join("\n");
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", listName + "_filtered_export.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+    });
+  </script>
+</body>
+</html>
