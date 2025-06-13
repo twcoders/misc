@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html ng-app="spApp">
+<head>
+  <meta charset="utf-8">
+  <title>SharePoint Infinite Scroll Viewer</title>
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #eee; position: sticky; top: 0; }
+    input[type="text"], input[type="date"] { width: 100%; }
+    button { margin: 10px 0; }
+    .loading { text-align: center; font-style: italic; margin: 10px; }
+  </style>
+</head>
+<body ng-controller="ListController">
+
+  <h2>SharePoint Infinite Scroll Viewer</h2>
+
+  <label>
+    Filter Title:
+    <input type="text" ng-model="filters.Title" placeholder="Filter Title">
+  </label>
+
+  <label>
+    From Date:
+    <input type="date" ng-model="filters.fromDate">
+  </label>
+  <label>
+    To Date:
+    <input type="date" ng-model="filters.toDate">
+  </label>
+
+  <button ng-click="exportCSV()">Export CSV</button>
+
+  <div style="max-height:600px; overflow:auto;" ng-scroll="checkScroll($event)" id="scrollContainer">
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Created</th>
+          <th>Author</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr ng-repeat="item in filteredItems = (items | filter:searchFilter)">
+          <td>{{item.Title}}</td>
+          <td>{{item.Created | date}}</td>
+          <td>{{item.Author.Title}}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="loading" ng-if="loading">Loading more...</div>
+  </div>
+
+<script>
+angular.module('spApp', []).controller('ListController', function($scope, $http, $window, $timeout) {
+  const baseUrl = _spPageContextInfo.webAbsoluteUrl;
+  const pageSize = 100;
+  let nextUrl = null;
+  $scope.items = [];
+  $scope.loading = false;
+  $scope.filters = {};
+
+  const buildUrl = (url) => {
+    return url || `${baseUrl}/_api/web/lists/getbytitle('YourList')/items?$top=${pageSize}&$orderby=Created desc&$expand=Author/Id&$select=Id,Title,Created,Author/Title`;
+  };
+
+  function loadData(url) {
+    if ($scope.loading || url === null) return;
+    $scope.loading = true;
+    $http.get(buildUrl(url), {
+      headers: { 'Accept': 'application/json;odata=verbose' }
+    }).then(function(response) {
+      const data = response.data.d;
+      $scope.items = $scope.items.concat(data.results);
+      nextUrl = data.__next || null;
+      $scope.loading = false;
+    }, function() {
+      $scope.loading = false;
+    });
+  }
+
+  $scope.searchFilter = function(item) {
+    const f = $scope.filters;
+    if (f.Title && !item.Title?.toLowerCase().includes(f.Title.toLowerCase())) return false;
+    if (f.fromDate && new Date(item.Created) < new Date(f.fromDate)) return false;
+    if (f.toDate && new Date(item.Created) > new Date(f.toDate)) return false;
+    return true;
+  };
+
+  $scope.exportCSV = function() {
+    const rows = $scope.filteredItems.map(item => 
+      [item.Title, item.Created, item.Author.Title]
+    );
+    let csv = "Title,Created,Author\n" + rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], {type: "text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sharepoint_export.csv';
+    a.click();
+  };
+
+  // Check scroll position
+  const scrollContainer = document.getElementById('scrollContainer');
+  scrollContainer.addEventListener('scroll', () => {
+    const nearBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 50;
+    if (nearBottom && nextUrl && !$scope.loading) {
+      $scope.$apply(() => loadData(nextUrl));
+    }
+  });
+
+  // Initial load
+  loadData(null);
+});
+</script>
+</body>
+</html>
