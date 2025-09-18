@@ -363,3 +363,20 @@
   </script>
 </body>
 </html>
+
+
+========
+Task: Clarify how to format Custom Parameters (data) for fields and fieldLabels.
+
+Keep everything in a single data string and separate parameters with &. New lines will not parse.
+Your two-line example won’t work; combine into one line.
+Examples
+
+Single line (CSV):
+fields=businessunitid,address1_city,domainname,mobilephone&fieldLabels=Business Unit,City,Domain,Mobile
+Using numbered fields:
+field1=businessunitid&field1Label=Business Unit&field2=address1_city&field3=domainname&field4=mobilephone
+Notes
+
+Up to 4 fields are used; extras are ignored.
+Spaces in labels are fine; they’re parsed as part of the value.
