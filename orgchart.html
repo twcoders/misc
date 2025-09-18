@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dataverse Org Chart</title>
+  <!-- jQuery (required by OrgChart) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- OrgChart CSS/JS (dabeng) v5.0.0 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/orgchart/5.0.0/css/jquery.orgchart.min.css" integrity="sha512-W7pOihXbQtEw8oK6Jwzlo1uAHzY8K4CHYUCYH1qT7eVVRxegkzypeQGNDw6owlijV1cW/+FEX6h2lNw0I3isKQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/orgchart/5.0.0/js/jquery.orgchart.min.js" integrity="sha512-8qD2QXhC7TBbFMp1xkoPk9wULqyL8blBejUszPVU41T5Lz+P+0m8pShIrE1XycSv5mf9WF8oq/5/iPGb51S8Vw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    #app {
+      display: flex; flex-direction: column; height: 100%;
+    }
+    header {
+      padding: 8px 12px; background: #0b5cab; color: #fff; font-size: 14px; display: none;
+    }
+    #status { padding: 6px 12px; font-size: 12px; color: #666; }
+    #chart-container { flex: 1 1 auto; overflow: hidden; }
+    #chart { width: 100%; height: 100%; }
+    .loading {
+      display: flex; align-items: center; gap: 8px; color: #555;
+    }
+    .spinner { width: 16px; height: 16px; border: 2px solid #ddd; border-top-color: #0b5cab; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .orgchart { height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header id="header">Org Chart</header>
+    <div id="status" class="loading"><span class="spinner"></span><span>Loading…</span></div>
+    <div id="chart-container"><div id="chart"></div></div>
+  </div>
+
+  <script>
+    // CONFIG: defaults for System User table (Manager: parentsystemuserid)
+    const DEFAULT_CONFIG = {
+      table: 'systemuser',              // entity logical name (singular)
+      idField: 'systemuserid',          // primary key logical name
+      nameField: 'fullname',            // display name
+      titleField: 'jobtitle',           // optional display field
+      managerField: 'parentsystemuserid', // self-referencing lookup logical name
+      startId: null,                    // start from this GUID (no braces). If null, uses current record's id.
+      maxDepth: 10,                     // safety cap
+      maxNodes: 1000,                   // safety cap
+      pan: true,
+      zoom: true,
+  visibleLevel: 4,
+  extraFields: [],                 // up to 4 logical names
+  extraLabels: []                  // matching labels (fallback to prettified logical name)
+    };
+
+    // Parse querystring and Dataverse HTML Web Resource "data" param (key1=val1&key2=val2)
+    function parseParams() {
+      const params = new URLSearchParams(window.location.search);
+      // If Dataverse HTML Web Resource custom parameters are used, they'll arrive in a single 'data' param
+      const dataStr = params.get('data');
+      if (dataStr && dataStr.includes('=')) {
+        const inner = new URLSearchParams(dataStr);
+        for (const [k,v] of inner.entries()) {
+          if (!params.has(k)) params.set(k, v);
+        }
+      }
+      const cfg = { ...DEFAULT_CONFIG };
+      const map = ['table','idField','nameField','titleField','managerField','startId'];
+      map.forEach(k => { if (params.get(k)) cfg[k] = params.get(k); });
+      // Common Dataverse form params when "Pass record id" is enabled
+      if (!cfg.startId && params.get('id')) {
+        cfg.startId = params.get('id');
+      }
+      // Extra fields: support fields (csv) or field1..field4 and optional labels
+      const csv = (s) => s.split(',').map(x => x.trim()).filter(Boolean);
+      let fields = [];
+      if (params.get('fields')) fields = csv(params.get('fields'));
+      for (let i = 1; i <= 4; i++) {
+        const f = params.get(`field${i}`);
+        if (f) fields.push(f.trim());
+      }
+      fields = Array.from(new Set(fields)).slice(0,4);
+      cfg.extraFields = fields;
+      let labels = [];
+      if (params.get('fieldLabels')) labels = csv(params.get('fieldLabels'));
+      for (let i = 1; i <= 4; i++) {
+        const l = params.get(`field${i}Label`);
+        if (l) labels.push(l.trim());
+      }
+      cfg.extraLabels = (labels || []).slice(0, cfg.extraFields.length);
+      if (params.get('maxDepth')) cfg.maxDepth = Number(params.get('maxDepth')) || DEFAULT_CONFIG.maxDepth;
+      if (params.get('maxNodes')) cfg.maxNodes = Number(params.get('maxNodes')) || DEFAULT_CONFIG.maxNodes;
+      if (params.get('pan')) cfg.pan = params.get('pan') === 'true';
+      if (params.get('zoom')) cfg.zoom = params.get('zoom') === 'true';
+      if (params.get('visibleLevel')) cfg.visibleLevel = Number(params.get('visibleLevel')) || DEFAULT_CONFIG.visibleLevel;
+      return cfg;
+    }
+
+    function setStatus(text, isError=false) {
+      const el = document.getElementById('status');
+      el.classList.toggle('loading', !isError && text && /load/i.test(text));
+      el.style.color = isError ? '#b00020' : '#666';
+      el.innerText = text || '';
+    }
+
+    function showHeader(text) {
+      const h = document.getElementById('header');
+      h.style.display = 'block';
+      if (text) h.textContent = text;
+    }
+
+    // Safe accessor for client API (works when embedded on a model-driven app form)
+    function getXrm() {
+      try { return window.parent && window.parent.Xrm ? window.parent.Xrm : null; } catch { return null; }
+    }
+
+    // Normalize GUID string (remove braces)
+    function normalizeId(id) { if (!id) return null; return id.replace(/[{}]/g,'').toLowerCase(); }
+
+    async function retrieveRecord(xrm, table, id, select, expand) {
+      const q = [];
+      if (select) q.push(`$select=${select}`);
+      if (expand) q.push(`$expand=${expand}`);
+      const qs = q.length ? `?${q.join('&')}` : '';
+      return xrm.WebApi.retrieveRecord(table, id, qs);
+    }
+
+    async function retrieveMultipleFetchXml(xrm, table, fetchXml) {
+      const encoded = `?fetchXml=${encodeURIComponent(fetchXml)}`;
+      const res = await xrm.WebApi.retrieveMultipleRecords(table, encoded);
+      return res.entities || res.value || [];
+    }
+
+    function buildFetchXmlChildren(config, parentIds) {
+      // Build a FetchXML query for children whose managerField is IN parentIds
+      const attr = (n) => `<attribute name='${n}' />`;
+  const values = parentIds.map(id => `<value>{${id}}</value>`).join('');
+      const xml = `
+        <fetch version='1.0' no-lock='true'>
+          <entity name='${config.table}'>
+            ${attr(config.idField)}
+            ${attr(config.nameField)}
+            ${config.titleField ? attr(config.titleField) : ''}
+            ${config.extraFields && config.extraFields.length ? config.extraFields.map(attr).join('') : ''}
+            ${attr(config.managerField)}
+            <filter>
+              <condition attribute='${config.managerField}' operator='in'>
+                ${values}
+              </condition>
+            </filter>
+          </entity>
+        </fetch>`;
+      return xml;
+    }
+
+    // Get a reasonably human-friendly display value for various field types
+    function getDisplayValue(rec, logical) {
+      // Try formatted values first
+      const formatted1 = rec[`${logical}@OData.Community.Display.V1.FormattedValue`];
+      if (formatted1) return formatted1;
+      const altKey = `_${logical}_value`;
+      const formatted2 = rec[`${altKey}@OData.Community.Display.V1.FormattedValue`];
+      if (formatted2) return formatted2;
+      // Raw values
+      if (rec.hasOwnProperty(logical)) return rec[logical];
+      if (rec.hasOwnProperty(altKey)) return rec[altKey];
+      return '';
+    }
+
+    function prettifyLabel(name) {
+      return (name || '').replace(/_/g, ' ').replace(/\s+/g,' ').trim().replace(/(^|\s)\S/g, s => s.toUpperCase());
+    }
+
+    function toNode(config, record) {
+      const id = (record[config.idField] || record[config.idField.toLowerCase()] || '').toLowerCase();
+      const name = record[config.nameField] || '';
+      const title = config.titleField ? (record[config.titleField] || '') : '';
+      const extras = [];
+      if (config.extraFields && config.extraFields.length) {
+        for (let i = 0; i < config.extraFields.length; i++) {
+          const fname = config.extraFields[i];
+          const label = (config.extraLabels && config.extraLabels[i]) || prettifyLabel(fname);
+          const val = getDisplayValue(record, fname);
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            extras.push({ label, value: String(val) });
+          }
+        }
+      }
+      return { id, name, title, extras };
+    }
+
+    async function findRootId(xrm, config, startId) {
+      // Climb up via managerField until null, with cycle guard
+      const seen = new Set();
+      let currentId = startId;
+      for (let i = 0; i < config.maxDepth; i++) {
+        if (!currentId || seen.has(currentId)) return currentId; // stop on null or cycle
+        seen.add(currentId);
+        const select = `${config.idField},${config.managerField}`;
+        // Expand manager to get its ID directly as nested object, avoiding _lookup_value key
+        const expand = `${config.managerField}($select=${config.idField})`;
+        const rec = await retrieveRecord(xrm, config.table, currentId, select, expand);
+        const mgrObj = rec[config.managerField];
+        if (mgrObj && mgrObj[config.idField]) {
+          currentId = normalizeId(mgrObj[config.idField]);
+        } else {
+          // Might not have expand support; fall back to _lookup_value property
+          const key = `_${config.managerField}_value`;
+          const mgrId = rec[key] ? normalizeId(rec[key]) : null;
+          if (!mgrId) return currentId;
+          currentId = mgrId;
+        }
+      }
+      return currentId; // safety cap reached; treat current as root
+    }
+
+    async function buildTree(xrm, config, rootId) {
+      // 1) Retrieve root record basic fields
+      // build select for root including extra fields
+      const selectParts = [config.idField, config.nameField];
+      if (config.titleField) selectParts.push(config.titleField);
+      if (config.extraFields && config.extraFields.length) selectParts.push(...config.extraFields);
+      const rootRec = await retrieveRecord(
+        xrm,
+        config.table,
+        rootId,
+        selectParts.join(',')
+      );
+      const root = toNode(config, rootRec);
+      root.children = [];
+
+      // 2) BFS to retrieve descendants in levels (bulk per level via IN)
+      const byId = new Map([[root.id, root]]);
+      let frontier = [root.id];
+      let total = 1;
+      const maxDepth = Math.max(1, config.maxDepth);
+      for (let depth = 1; depth <= maxDepth && frontier.length > 0 && total < config.maxNodes; depth++) {
+        // Fetch children for current frontier
+        const fx = buildFetchXmlChildren(config, frontier);
+        const children = await retrieveMultipleFetchXml(xrm, config.table, fx);
+        if (!children.length) break;
+        const nextFrontier = [];
+        // Attach all children to their parent
+        for (const r of children) {
+          if (total >= config.maxNodes) break;
+          const node = toNode(config, r);
+          if (!node.id) continue;
+          if (!byId.has(node.id)) {
+            byId.set(node.id, node);
+            node.children = [];
+            total++;
+          }
+          // Determine parent id from lookup field
+          const parentId = normalizeId(r[`_${config.managerField}_value`]) || null;
+          if (parentId && byId.has(parentId)) {
+            const parentNode = byId.get(parentId);
+            parentNode.children.push(node);
+          }
+          nextFrontier.push(node.id);
+        }
+        frontier = nextFrontier;
+      }
+
+      return root;
+    }
+
+    function renderChart(root, config) {
+      const $container = $('#chart');
+      $container.empty();
+      const options = {
+        data: root,
+        nodeTitle: 'name',
+        nodeId: 'id',
+        pan: config.pan,
+        zoom: config.zoom,
+        visibleLevel: config.visibleLevel,
+        nodeTemplate: function(data) {
+          const lines = [];
+          if (config.titleField && data.title) lines.push(`<div class="kv"><span class="k">${prettifyLabel(config.titleField)}</span><span class="v">${escapeHtml(String(data.title))}</span></div>`);
+          if (Array.isArray(data.extras)) {
+            data.extras.forEach(x => {
+              lines.push(`<div class="kv"><span class="k">${escapeHtml(String(x.label))}</span><span class="v">${escapeHtml(String(x.value))}</span></div>`);
+            });
+          }
+          return `
+            <div class="title">${escapeHtml(String(data.name || ''))}</div>
+            <div class="content">
+              ${lines.join('')}
+            </div>
+          `;
+        }
+      };
+      const oc = $container.orgchart(options);
+      return oc;
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    async function main() {
+      const config = parseParams();
+      const xrm = getXrm();
+
+      // If not running inside Dataverse, render demo data
+      if (!xrm || !xrm.WebApi) {
+        showHeader('Org Chart (Demo)');
+        setStatus('No Dataverse context detected. Showing demo data.');
+        const demo = {
+          id: '1', name: 'Alice Adams', title: 'CEO', children: [
+            { id: '2', name: 'Bob Brown', title: 'VP Sales', children: [
+              { id: '3', name: 'Carol Clark', title: 'Sales Manager' }
+            ]},
+            { id: '4', name: 'Diana Doe', title: 'VP Engineering', children: [
+              { id: '5', name: 'Evan Evans', title: 'Eng Manager', children: [
+                { id: '6', name: 'Fiona Fox', title: 'Senior Engineer' }
+              ]}
+            ]}
+          ]
+        };
+        renderChart(demo, config);
+        return;
+      }
+
+      try {
+        setStatus('Loading org data from Dataverse…');
+        // Determine starting record ID
+        let currentId = normalizeId(config.startId);
+        if (!currentId) {
+          // Attempt to get ID from hosting form (works when added to a form)
+          const legacy = xrm.Page && xrm.Page.data && xrm.Page.data.entity;
+          if (legacy && typeof legacy.getId === 'function') {
+            currentId = normalizeId(legacy.getId());
+          }
+        }
+        if (!currentId) {
+          setStatus('No startId specified and no current form record detected.', true);
+          return;
+        }
+
+        // Find root ancestor of the chain
+        const rootId = await findRootId(xrm, config, currentId);
+        // Build full tree from root downward (bounded by maxDepth/maxNodes)
+        const root = await buildTree(xrm, config, rootId);
+
+        showHeader('Org Chart');
+        setStatus('');
+        renderChart(root, config);
+      } catch (e) {
+        console.error(e);
+        setStatus(`Error: ${e && e.message ? e.message : 'Failed to load data'}`, true);
+      }
+    }
+
+    // Start
+    main();
+  </script>
+</body>
+</html>
