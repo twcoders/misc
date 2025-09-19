@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="React Org Chart - Hierarchy View Replacement for Dataverse" />
+    <title>Hierarchy View - Org Chart</title>
+    
+    <!-- Configuration Script -->
+    <script>
+    // Get entity and record information from URL parameters or form context
+    function getEntityConfig() {
+        // Try to get from URL parameters first
+        const urlParams = new URLSearchParams(window.location.search);
+        const entityFromUrl = urlParams.get('entity') || urlParams.get('entityName');
+        const lookupFromUrl = urlParams.get('lookup') || urlParams.get('lookupField');
+        
+        // Try to get from Dataverse form context
+        let entityFromContext, recordIdFromContext;
+        if (window.parent && window.parent.Xrm && window.parent.Xrm.Page) {
+            try {
+                const formContext = window.parent.Xrm.Page;
+                entityFromContext = formContext.data.entity.getEntityName();
+                recordIdFromContext = formContext.data.entity.getId();
+            } catch (e) {
+                console.log('Could not get form context:', e);
+            }
+        }
+        
+        // Return configuration based on detected or configured entity
+        const detectedEntity = entityFromUrl || entityFromContext || "contact";
+        
+        return {
+            entityName: detectedEntity,
+            currentRecordId: recordIdFromContext,
+            selfReferencingField: getLookupFieldForEntity(detectedEntity)
+        };
+    }
+    
+    function getLookupFieldForEntity(entityName) {
+        // Map common entities to their self-referencing lookup fields
+        const entityLookupMap = {
+            "contact": "parentcustomerid",
+            "account": "parentaccountid", 
+            "systemuser": "parentsystemuserid",
+            "team": "administratorid",
+            // Add your custom entities here:
+            // "new_department": "new_parentdepartment",
+            // "new_organization": "new_parentorganization"
+        };
+        
+        return entityLookupMap[entityName] || "parentcustomerid"; // fallback to contact
+    }
+    
+    // Get dynamic configuration
+    const entityConfig = getEntityConfig();
+    
+    window.DataverseHierarchyConfig = {
+        // 👇 DYNAMIC ENTITY CONFIGURATION
+        entityName: entityConfig.entityName,                    // Detected entity
+        selfReferencingField: entityConfig.selfReferencingField, // Detected lookup field
+        currentRecordId: entityConfig.currentRecordId,          // Current record ID
+        
+        // 👇 CUSTOMIZE CARD DISPLAY FIELDS BASED ON ENTITY
+        cardFields: getCardFieldsForEntity(entityConfig.entityName),
+        
+        // 👇 HIERARCHY DISPLAY OPTIONS
+        displayOptions: {
+            direction: "vertical",    // "vertical" or "horizontal"
+            autoExpand: 2,           // Auto-expand first 2 levels
+            showActions: true,       // Show action buttons on cards
+            showConnectors: true     // Show connecting lines
+        },
+        
+        // 👇 CARD STYLING
+        cardStyle: {
+            width: 200,              // Card width in pixels
+            height: 120,             // Card height in pixels
+            backgroundColor: "#ffffff",
+            borderColor: "#e1e1e1",
+            textColor: "#323130"
+        }
+    };
+    
+    function getCardFieldsForEntity(entityName) {
+        // Define card fields for different entities
+        const entityCardFields = {
+            "contact": {
+                title: "fullname",
+                subtitle: "jobtitle", 
+                info1: "department",
+                info2: "emailaddress1",
+                info3: "telephone1",
+                avatar: "entityimage"
+            },
+            "account": {
+                title: "name",
+                subtitle: "accountnumber",
+                info1: "telephone1",
+                info2: "websiteurl", 
+                info3: "address1_city",
+                avatar: "entityimage"
+            },
+            "systemuser": {
+                title: "fullname",
+                subtitle: "title",
+                info1: "domainname",
+                info2: "internalemailaddress",
+                info3: "businessunitid",
+                avatar: "entityimage"
+            },
+            // Add your custom entities here:
+            // "new_department": {
+            //     title: "new_name",
+            //     subtitle: "new_manager",
+            //     info1: "new_location",
+            //     info2: "new_budget", 
+            //     info3: "new_phone"
+            // }
+        };
+        
+        return entityCardFields[entityName] || entityCardFields["contact"]; // fallback to contact fields
+    }
+    
+    // Log configuration for debugging
+    console.log('Dataverse Hierarchy Configuration:', window.DataverseHierarchyConfig);
+    </script>
+    
+    <!-- React App Resources -->
+    <script defer="defer" src="dsr_hierarchy_chunk_703_js"></script>
+    <script defer="defer" src="dsr_hierarchy_chunk_700_js"></script>
+    <script defer="defer" src="dsr_hierarchy_main_js"></script>
+    <link href="dsr_hierarchy_main_css" rel="stylesheet">
+</head>
+<body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+</body>
+</html>
