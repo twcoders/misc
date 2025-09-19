@@ -1,0 +1,14 @@
+<script>
+window.DataverseHierarchyConfig = {
+  entityName: "contact",                    // 👈 Change to your entity
+  selfReferencingField: "parentcustomerid", // 👈 Change to your lookup field
+  
+  cardFields: {
+    title: "fullname",        // 👈 Primary field to display
+    subtitle: "jobtitle",     // 👈 Secondary field
+    info1: "department",      // 👈 Additional info line 1
+    info2: "emailaddress1",   // 👈 Additional info line 2
+    info3: "telephone1"       // 👈 Additional info line 3
+  }
+};
+</script>
