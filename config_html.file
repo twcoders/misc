@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="React Org Chart - Hierarchy View Replacement for Dataverse - DIAGNOSTIC VERSION" />
+    <title>Hierarchy View - Org Chart - DIAGNOSTIC</title>
+    
+    <!-- DIAGNOSTIC: Force entity to new_department -->
+    <script>
+    console.log('🔍 DIAGNOSTIC VERSION LOADED - Force new_department entity');
+    
+    // Force the configuration immediately
+    window.DataverseHierarchyConfig = {
+        entityName: "new_department",
+        selfReferencingField: "new_parentdepartment",
+        useLiveData: true,
+        dataSource: 'forced',
+        cardFields: {
+            title: "new_name",
+            subtitle: "new_description",
+            info1: "new_manager", 
+            info2: "new_location",
+            info3: "new_budget"
+        },
+        displayOptions: {
+            direction: "vertical",
+            autoExpand: 2,
+            showActions: true,
+            showConnectors: true
+        }
+    };
+    
+    console.log('🎯 Forced configuration:', window.DataverseHierarchyConfig);
+    </script>
+    
+    <!-- Dataverse Live Data Fetcher -->
+    <script>
+    window.DataverseFetcher = {
+      async fetchHierarchyData(entityName, lookupField, recordId = null) {
+        console.log('🚀 FETCHING DATA for entity:', entityName, 'lookup:', lookupField);
+        
+        try {
+          // Get current context - try multiple ways
+          let webApi = null;
+          
+          if (window.parent && window.parent.Xrm && window.parent.Xrm.WebApi) {
+            webApi = window.parent.Xrm.WebApi;
+            console.log('✅ Found Xrm.WebApi in parent window');
+          } else if (window.Xrm && window.Xrm.WebApi) {
+            webApi = window.Xrm.WebApi;
+            console.log('✅ Found Xrm.WebApi in current window');
+          } else if (window.parent && window.parent.parent && window.parent.parent.Xrm) {
+            webApi = window.parent.parent.Xrm.WebApi;
+            console.log('✅ Found Xrm.WebApi in grandparent window');
+          }
+          
+          if (!webApi) {
+            console.error('❌ Xrm.WebApi not available, using sample data');
+            return null;
+          }
+
+          // Build query for the entity
+          const entitySetName = entityName + 's'; // Simple pluralization
+          const fields = [
+            'new_departmentid', 'new_name', 'new_description', 'new_manager',
+            'new_location', 'new_budget', '_new_parentdepartment_value'
+          ];
+          
+          let query = `?$select=${fields.join(',')}`;
+          query += `&$top=100`; // Limit for testing
+          
+          console.log(`🔎 Fetching from: ${entitySetName}${query}`);
+          
+          const result = await webApi.retrieveMultipleRecords(entityName, query);
+          
+          console.log(`✅ Fetched ${result.entities.length} records:`, result.entities);
+          return result.entities;
+          
+        } catch (error) {
+          console.error('❌ Error fetching Dataverse data:', error);
+          return null;
+        }
+      }
+    };
+    
+    // Force fetch data immediately
+    async function forceFetchData() {
+        console.log('🔄 Force fetching new_department data...');
+        const data = await window.DataverseFetcher.fetchHierarchyData('new_department', 'new_parentdepartment');
+        if (data) {
+            window.DataverseHierarchyConfig.liveData = data;
+            window.DataverseHierarchyConfig.transformedData = data;
+            window.sampleDataverseRecords = data; // Override sample data
+            console.log('✅ Live data stored:', data.length, 'records');
+            
+            // Dispatch event to notify React
+            window.dispatchEvent(new CustomEvent('dataverseLiveDataLoaded', {
+                detail: { data: data, entityName: 'new_department' }
+            }));
+        } else {
+            console.log('❌ No live data fetched');
+        }
+    }
+    
+    // Execute after DOM loads
+    document.addEventListener('DOMContentLoaded', forceFetchData);
+    </script>
+    
+    <!-- React App Resources -->
+    <script defer="defer" src="dsr_hierarchy_chunk_703_js"></script>
+    <script defer="defer" src="dsr_hierarchy_chunk_700_js"></script>
+    <script defer="defer" src="dsr_hierarchy_main_js"></script>
+    <link href="dsr_hierarchy_main_css" rel="stylesheet">
+    
+    <!-- Post-load diagnostics -->
+    <script>
+    window.addEventListener('load', function() {
+        console.log('🏁 Page fully loaded');
+        
+        setTimeout(function() {
+            console.log('=== 🔍 DIAGNOSTIC REPORT ===');
+            console.log('Window location:', window.location.href);
+            console.log('DataverseHierarchyConfig:', window.DataverseHierarchyConfig);
+            console.log('Live data available:', !!window.DataverseHierarchyConfig?.liveData);
+            console.log('Live data count:', window.DataverseHierarchyConfig?.liveData?.length || 0);
+            console.log('Sample data override:', !!window.sampleDataverseRecords);
+            console.log('Xrm available:', !!(window.parent?.Xrm || window.Xrm));
+            
+            if (window.parent?.Xrm?.Page) {
+                try {
+                    console.log('Form entity:', window.parent.Xrm.Page.data.entity.getEntityName());
+                } catch (e) {
+                    console.log('Form entity error:', e.message);
+                }
+            }
+            
+            console.log('=============================');
+            
+            // Try force override again
+            if (window.DataverseHierarchyConfig?.liveData) {
+                window.sampleDataverseRecords = window.DataverseHierarchyConfig.liveData;
+                console.log('🔄 Re-applied sample data override');
+            }
+        }, 3000);
+    });
+    </script>
+</head>
+<body>
+    <div style="background: #ffeb3b; padding: 10px; margin: 10px; border: 2px solid #ff9800; border-radius: 5px;">
+        <h3>🔍 DIAGNOSTIC VERSION</h3>
+        <p>This is a diagnostic version to troubleshoot live data issues.</p>
+        <p>Check browser console (F12) for detailed logs.</p>
+    </div>
+    
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+</body>
+</html>
