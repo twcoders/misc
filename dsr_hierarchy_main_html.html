@@ -8,7 +8,65 @@
     <title>Hierarchy View - Org Chart</title>
     
     <!-- Load Configuration First (if using separate file) -->
-    <!-- <script src="dsr_hierarchy_config_js"></script> -->
+     <link href="dsr_hierarchy_main_css.css" rel="stylesheet">  <!-- <script src="dsr_hierarchy_config_js"></script> -->
+    
+    <!-- Dataverse Live Data Fetcher -->
+    <script>
+    // Error handling for React
+    window.addEventListener('error', function(e) {
+        console.error('Global error caught:', e.error);
+        console.error('Error message:', e.message);
+        console.error('Error filename:', e.filename);
+        console.error('Error line:', e.lineno);
+        
+        // Show error in the DOM
+        const rootElement = document.getElementById('root');
+        if (rootElement && !rootElement.hasChildNodes()) {
+            rootElement.innerHTML = `
+                <div style="padding: 20px; border: 2px solid red; background: #ffeaea; margin: 10px;">
+                    <h3>React Error Detected</h3>
+                    <p><strong>Error:</strong> ${e.message}</p>
+                    <p><strong>File:</strong> ${e.filename}</p>
+                    <p><strong>Line:</strong> ${e.lineno}</p>
+                    <p><strong>Check browser console for more details</strong></p>
+                </div>
+            `;
+        }
+    });
+    
+    // Check if root element exists
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, checking for root element...');
+        const rootElement = document.getElementById('root');
+        console.log('Root element found:', !!rootElement);
+        if (rootElement) {
+            console.log('Root element innerHTML length:', rootElement.innerHTML.length);
+        }
+        
+        // Wait a bit and check if React mounted
+        setTimeout(() => {
+            const rootElement = document.getElementById('root');
+            if (rootElement) {
+                console.log('After 3 seconds - Root element children:', rootElement.children.length);
+                if (rootElement.children.length === 0) {
+                    rootElement.innerHTML = `
+                        <div style="padding: 20px; border: 2px solid orange; background: #fff3cd; margin: 10px;">
+                            <h3>React App Not Mounted</h3>
+                            <p>The React application failed to mount to the root element.</p>
+                            <p>Check the browser console for React errors.</p>
+                            <p><strong>Possible causes:</strong></p>
+                            <ul>
+                                <li>JavaScript files not loaded properly</li>
+                                <li>React version compatibility issues</li>
+                                <li>Missing dependencies</li>
+                            </ul>
+                        </div>
+                    `;
+                }
+            }
+        }, 3000);
+    });
+    </script>
     
     <!-- Dataverse Live Data Fetcher -->
     <script>
@@ -91,6 +149,11 @@
             'new_departmentid', 'new_name', 'new_description', 'new_manager',
             'new_location', 'new_budget', '_new_parentdepartment_value',
             'new_logo', 'createdon', 'modifiedon'
+          ],
+          'new_position': [
+            'new_positionid', 'new_name', 'new_description', 'new_manager',
+            'new_level', 'new_salary', '_new_parentposition_value',
+            'new_image', 'createdon', 'modifiedon'
           ]
         };
         
@@ -135,7 +198,7 @@
         }
         
         // Determine which entity configuration to use
-        const targetEntity = forceEntity || entityFromUrl || entityFromContext || "new_department"; // Default to your entity
+        const targetEntity = forceEntity || entityFromUrl || entityFromContext || "new_position"; // Default to your entity
         const targetLookupField = lookupFromUrl || getLookupFieldForEntity(targetEntity);
         
         console.log('Target entity:', targetEntity);
@@ -187,7 +250,8 @@
             "account": "parentaccountid", 
             "systemuser": "parentsystemuserid",
             "team": "administratorid",
-            "new_department": "new_parentdepartment" // Add your custom entity
+            "new_department": "new_parentdepartment",
+            "new_position": "new_parentposition" // Add your custom entity
         };
         
         return entityLookupMap[entityName] || "new_parentdepartment"; // Default to your lookup field
@@ -226,10 +290,18 @@
                 info2: "new_location",
                 info3: "new_budget",
                 avatar: "new_logo"
+            },
+            "new_position": {
+                title: "new_name",
+                subtitle: "new_description",
+                info1: "new_manager", 
+                info2: "new_level",
+                info3: "new_salary",
+                avatar: "new_image"
             }
         };
         
-        return entityCardFields[entityName] || entityCardFields["new_department"]; // Default to your entity
+        return entityCardFields[entityName] || entityCardFields["new_position"]; // Default to your entity
     }
     
     function transformDataverseRecords(records, entityName, lookupField) {
@@ -310,7 +382,15 @@
                 
                 // Store live data for React app to use
                 window.DataverseHierarchyConfig.liveData = liveData;
+                window.DataverseHierarchyConfig.entityName = entityName;
                 window.DataverseHierarchyConfig.dataSource = 'live';
+                
+                // Convert data using external function
+                if (window.convertLiveDataToOrgChart) {
+                    const convertedData = window.convertLiveDataToOrgChart(liveData, entityName);
+                    window.DataverseHierarchyConfig.convertedHierarchyData = convertedData;
+                    console.log('Data converted using external function:', convertedData);
+                }
                 
                 // Dispatch event to notify React app
                 window.dispatchEvent(new CustomEvent('dataverseLiveDataLoaded', {
@@ -321,7 +401,7 @@
                 window.DataverseHierarchyConfig.hierarchyData = liveData;
                 window.DataverseHierarchyConfig.sampleDataOverride = liveData;
                 
-                // Set up data transformation for the React app
+                // Set up data transformation for the React app (legacy support)
                 window.DataverseHierarchyConfig.transformedData = transformDataverseRecords(liveData, entityName, lookupField);
                 
             } else {
@@ -348,7 +428,7 @@
     <!-- React App Resources -->
     <script defer="defer" src="dsr_hierarchy_chunk_703_js"></script>
     <script defer="defer" src="dsr_hierarchy_chunk_700_js"></script>
-    <script defer="defer" src="dsr_hierarchy_main_20250921_012506.js"></script>
+    <script defer="defer" src="dsr_hierarchy_main_js.js"></script>
     <link href="dsr_hierarchy_main_20250921_012506.css" rel="stylesheet">
     
     <!-- Override React App's Sample Data -->
@@ -391,6 +471,117 @@
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
     
+    <!-- Data Conversion Functions -->
+    <script>
+    // Convert live Dataverse data to org chart format
+    // This function can be easily modified without rebuilding React code
+    window.convertLiveDataToOrgChart = function(liveData, entityName) {
+        console.log('Converting live data to org chart format:', liveData?.length, 'records for entity:', entityName);
+        
+        if (!liveData || liveData.length === 0) {
+            console.log('No live data to convert');
+            return null;
+        }
+        
+        // Get field mappings for the entity
+        const fieldMappings = getFieldMappingsForEntity(entityName);
+        const lookupField = getLookupFieldForEntity(entityName);
+        const cardFields = getCardFieldsForEntity(entityName);
+        
+        // Map live data to chart nodes with enhanced fields
+        const nodes = liveData.map(record => {
+            const node = {
+                id: record[fieldMappings[0]] || record.id, // Primary ID field
+                name: record[cardFields.title] || record[fieldMappings[1]] || "Unknown",
+                title: record[cardFields.subtitle] || "",
+                children: []
+            };
+            
+            // Add manager/parent relationship
+            if (lookupField && record[`_${lookupField}_value`]) {
+                node.managerId = record[`_${lookupField}_value`];
+            }
+            
+            // Add additional info fields
+            if (cardFields.info1 && record[cardFields.info1]) {
+                node.manager = record[cardFields.info1];
+            }
+            if (cardFields.info2 && record[cardFields.info2]) {
+                node.level = record[cardFields.info2];
+            }
+            if (cardFields.info3 && record[cardFields.info3]) {
+                node.salary = record[cardFields.info3];
+            }
+            
+            // Add department or other contextual info
+            if (record.new_department || record.departmentname) {
+                node.department = record.new_department || record.departmentname;
+            }
+            
+            // Store original record for reference
+            node.originalData = record;
+            
+            return node;
+        });
+        
+        // Build hierarchy
+        const nodeMap = {};
+        nodes.forEach(node => nodeMap[node.id] = node);
+        
+        const rootNodes = [];
+        nodes.forEach(node => {
+            if (node.managerId && nodeMap[node.managerId]) {
+                nodeMap[node.managerId].children.push(node);
+            } else {
+                rootNodes.push(node);
+            }
+        });
+        
+        // Return hierarchy structure
+        if (rootNodes.length === 1) {
+            console.log('Single root hierarchy created');
+            return rootNodes[0];
+        } else if (rootNodes.length > 1) {
+            console.log('Multiple roots, creating virtual root with', rootNodes.length, 'children');
+            return { 
+                id: "virtual-root", 
+                name: "Organization", 
+                title: "Root Level", 
+                children: rootNodes 
+            };
+        } else {
+            console.log('No root nodes found');
+            return {
+                id: "empty-root",
+                name: "No Data",
+                title: "No hierarchy data available",
+                children: []
+            };
+        }
+    };
+    
+    // Make the converted data available globally for React to use
+    window.getConvertedHierarchyData = function() {
+        // First check if we already have converted data
+        if (window.DataverseHierarchyConfig && window.DataverseHierarchyConfig.convertedHierarchyData) {
+            console.log('Using pre-converted hierarchy data');
+            return window.DataverseHierarchyConfig.convertedHierarchyData;
+        }
+        
+        // Otherwise convert live data on demand
+        if (window.DataverseHierarchyConfig && window.DataverseHierarchyConfig.liveData) {
+            console.log('Converting live data on demand');
+            return window.convertLiveDataToOrgChart(
+                window.DataverseHierarchyConfig.liveData,
+                window.DataverseHierarchyConfig.entityName
+            );
+        }
+        
+        console.log('No data available for conversion');
+        return null;
+    };
+    </script>
+
     <!-- Debug Information -->
     <script>
     window.addEventListener('load', function() {
