@@ -1,0 +1,262 @@
+🎯 GOAL
+
+Create a hierarchical date slicer (Year → Quarter → Month → Day) synced across both pages:
+
+Filters apply to all visuals (chart + table)
+
+Works with Dataverse’s Created On (or any date field)
+
+Remains synced even when hidden on the drill-through page
+
+🧩 Step-by-Step: Add a Hierarchical Date Slicer
+1. Confirm Your Date Field
+
+You’ll typically have a column like:
+
+Created On
+
+Modified On
+
+Closed Date
+
+We’ll use Created On here.
+
+If it’s a text column, first convert it to a date type in Power Query:
+
+Transform Data → select column → Data Type → Date/Time → Close & Apply.
+
+2. Create a Date Table (Best Practice)
+
+Power BI works best with a dedicated Date table for hierarchy and relationships.
+
+Go to Modeling → New Table, and paste this DAX:
+
+DateTable =
+ADDCOLUMNS (
+    CALENDAR (DATE(2020,1,1), TODAY()),
+    "Year", YEAR([Date]),
+    "Quarter", "Q" & FORMAT([Date], "Q"),
+    "Month", FORMAT([Date], "MMMM"),
+    "MonthNumber", MONTH([Date]),
+    "Day", DAY([Date])
+)
+
+
+Mark it as a Date table:
+
+Select the DateTable
+
+Go to Table tools → Mark as date table → select [Date] column
+
+Create a relationship:
+
+DateTable[Date] → test_table[Created On]
+
+✅ This allows all your visuals and slicers to filter test_table properly.
+
+3. Add the Date Hierarchy Slicer
+
+On your main summary page:
+
+Insert a Slicer visual
+
+Add DateTable[Year], DateTable[Quarter], DateTable[Month], DateTable[Day]
+
+Click the ellipsis (•••) on the slicer → Hierarchy mode (so it collapses/expands like a tree).
+
+You can use the dropdown style for compactness:
+
+Select the slicer → under Format → Slicer settings → Style → Dropdown
+
+✅ You now have a hierarchy slicer that expands from Year → Quarter → Month → Day.
+
+4. Sync the Date Hierarchy Slicer
+
+Duplicate that slicer on your Drillthrough_Details page:
+
+Copy → paste the slicer from the main page.
+
+Go to View → enable “Sync Slicers” pane.
+
+In the Sync Slicers pane:
+
+For your Date slicer:
+
+Sync: ✅ both pages
+
+Visible: show on main page, hide on drill-through page (optional)
+
+✅ Now, when a user selects 2025 → Q3 → October, both pages filter to those records.
+
+5. Test the Workflow
+
+On the main page, select:
+
+Year = 2025
+
+Month = October
+
+Observe that your clustered chart updates accordingly.
+
+Right-click any bar → Drill through → Details page.
+
+The details table now shows only records for October 2025 — and for that specific Organization + Status.
+
+6. (Optional) Show Active Range
+
+You can display a dynamic date label on your report:
+
+Selected Date Range :=
+VAR MinDate = MIN('DateTable'[Date])
+VAR MaxDate = MAX('DateTable'[Date])
+RETURN
+"Showing data from " & FORMAT(MinDate, "MMM d, yyyy") &
+" to " & FORMAT(MaxDate, "MMM d, yyyy")
+
+
+→ Add a Card visual using this measure to show the current filter range.
+
+✅ Final Structure Summary
+Page	Visual	Key Filters / Sync
+Main Summary	Clustered Column/Bar Chart + Date Hierarchy Slicer	Filters by DateTable, Organization, Status
+Drillthrough_Details	Table (with hidden synced slicers)	Syncs with date + other slicers automatically
+Supporting Measures	Active Record Count, Drillthrough Title, Selected Date Range	Provide dynamic summaries
+
+  =====================================
+
+  🚀 GOAL
+
+Visualize and compare record counts per Status across different Organizations, using live data from Dataverse (test_table),
+showing only active records, with drill-through to view supporting rows.
+
+🧩 Step-by-Step Guide (All-in-One)
+1. Connect to Dataverse
+
+In Power BI Desktop → Home → Get Data → Dataverse
+
+Select your environment → choose the table test_table → Load
+
+2. Filter for Active Records
+
+You can filter in Power Query or by creating a DAX measure.
+Here we’ll use a DAX measure (flexible and dynamic).
+
+In Report view, select test_table in the Fields pane.
+
+Go to Modeling → New Measure.
+
+Paste this DAX code:
+
+Active Record Count :=
+CALCULATE(
+    COUNTROWS('test_table'),
+    'test_table'[statecode] = 0   // Replace with your “active” flag column if named differently
+)
+
+
+✅ This measure counts only active records (statecode = 0 is the usual “Active” value in Dataverse).
+
+3. Create the Clustered Chart
+
+From the Visualizations pane, choose Clustered Column Chart (or Bar Chart).
+
+Add the following fields:
+
+X-axis: Status
+
+Legend: Organization
+
+Values: Active Record Count (the DAX measure)
+
+Resize and format as you like.
+
+✅ You now have a clustered bar/column chart showing one bar per Organization for each Status — using only active records.
+
+4. Create a Drill-through Page
+
+This page will display the actual records behind any bar.
+
+Add a new page → rename it to Drillthrough_Details.
+
+With the page selected, open the Visualizations pane.
+
+Under the Drill-through filters section, drag:
+
+Status
+
+Organization
+
+(Optional) Add a page filter for active records:
+
+Drag statecode into Filters on this page and select “Active” (or 0).
+
+5. Add a Table of Records
+
+On the same page:
+
+Insert a Table visual.
+
+Add the following fields from test_table:
+
+Record Name (or Title)
+
+Status
+
+Organization
+
+Owner
+
+Created On
+
+Any other useful fields
+
+Resize the table for readability.
+
+✅ This table will automatically filter to show the records for the Status and Organization that were drilled through.
+
+6. Add a Dynamic Title (Optional but Recommended)
+
+Add a dynamic page title that updates based on the drill-through context.
+
+Insert a Text box.
+
+Click inside it → in the formula bar, click fx (expression icon).
+
+Choose Format by: Field value
+→ Select Measure (we’ll create one below).
+
+Create this DAX measure:
+
+Drillthrough Title :=
+"Details for " & SELECTEDVALUE('test_table'[Organization]) &
+" – " & SELECTEDVALUE('test_table'[Status])
+
+
+Now assign this measure as the title expression.
+
+✅ Your details page title now reads, for example:
+“Details for Org A – In Progress”
+
+7. Add a Back Button
+
+Insert → Buttons → Back.
+
+Power BI automatically sets it to return to the previous page (no configuration needed).
+
+8. Test It
+
+Go back to your main chart page.
+
+Right-click on any bar → Drill through → Drillthrough_Details.
+
+You’ll see:
+
+The title updates with the chosen Organization + Status.
+
+The table lists all the active records that make up that bar.
+
+✅ Final Structure Summary
+Page	Visual	Purpose	Key Fields / Measures
+Main Summary	Clustered Column/Bar Chart	Compare record counts by Organization & Status	Status, Organization, Active Record Count
+Drillthrough_Details	Table	Show detailed records supporting each bar	Filters: Status, Organization, (optional) statecode = Active
+DAX Measures	Active Record Count, Drillthrough Title	For filtering and display	Dynamic & reusable
