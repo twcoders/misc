@@ -1,0 +1,208 @@
+Modular plugins structure:
+Scaling Checklist
+Aspect	        Recommended Practice
+Number of DLLs	Group by entity or domain, not one per plugin
+Shared Code	    Move to Common or NuGet package
+Registration	 Use PAC CLI and YAML automation
+Logging	       Use centralized logging (e.g., Azure App Insights or Dataverse table)
+Dependencies	 Avoid direct SDK logic duplication — use service layer
+Versioning	   Keep assemblies versioned per module (e.g., 1.2.3 → Account module only)
+
+/src
+├── Plugins.Core/
+│   ├── Base classes
+│   ├── Helpers
+│   └── Shared logic (e.g., tracing, config, DI)
+│
+├── Plugins.Account/
+│   ├── AccountCreatePlugin.cs
+│   ├── AccountUpdatePlugin.cs
+│   └── Plugin.Account.csproj
+│
+├── Plugins.Contact/
+│   ├── ContactMergePlugin.cs
+│   ├── ContactValidatePlugin.cs
+│   └── Plugin.Contact.csproj
+│
+├── Plugins.Invoice/
+│   └── Plugin.Invoice.csproj
+│
+└── Plugins.Sales/
+    └── Plugin.Sales.csproj
+
+    DataversePlugins/
+├── DataversePlugins.sln
+│
+├── src/
+│   ├── Plugins.Core/
+│   │   ├── BasePlugin.cs
+│   │   ├── Helpers/
+│   │   │   ├── TracingHelper.cs
+│   │   │   ├── ServiceFactory.cs
+│   │   │   └── ConfigHelper.cs
+│   │   └── Plugin.Core.csproj
+│   │
+│   ├── Plugins.Account/
+│   │   ├── AccountCreatePlugin.cs
+│   │   ├── AccountUpdatePlugin.cs
+│   │   └── Plugin.Account.csproj
+│   │
+│   ├── Plugins.Contact/
+│   │   ├── ContactMergePlugin.cs
+│   │   ├── ContactUpdatePlugin.cs
+│   │   └── Plugin.Contact.csproj
+│   │
+│   ├── Plugins.Invoice/
+│   │   ├── InvoiceValidationPlugin.cs
+│   │   └── Plugin.Invoice.csproj
+│   │
+│   ├── Plugins.Sales/
+│   │   ├── OpportunityWonPlugin.cs
+│   │   └── Plugin.Sales.csproj
+│   │
+│   └── Plugins.Tests/
+│       ├── Mocks/
+│       │   ├── FakePluginContext.cs
+│       │   └── FakeServiceFactory.cs
+│       ├── ContactPluginTests.cs
+│       └── Plugins.Tests.csproj
+│
+├── build/
+│   ├── ci-cd.yaml
+│   ├── spkl.json
+│   ├── deploy.ps1
+│   └── plugin-registration/
+│       ├── account.json
+│       ├── contact.json
+│       └── invoice.json
+│
+└── docs/
+    ├── architecture.md
+    └── setup.md
+
+
+Each module can represent a team’s area or business capability.
+The Plugins.Core library provides shared base classes (for example, BasePlugin, TracingHelper, ServiceFactory).
+
+2. shared core llibrary
+
+public abstract class BasePlugin : IPlugin
+{
+    protected ITracingService Tracer { get; private set; }
+    protected IOrganizationService Service { get; private set; }
+
+    public void Execute(IServiceProvider serviceProvider)
+    {
+        Tracer = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+        var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+        var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+        Service = factory.CreateOrganizationService(context.UserId);
+        ExecutePluginLogic(context);
+    }
+
+    protected abstract void ExecutePluginLogic(IPluginExecutionContext context);
+}
+
+
+2. Shared Core Library
+
+All plugins reference a single Core project:
+
+public abstract class BasePlugin : IPlugin
+{
+    protected ITracingService Tracer { get; private set; }
+    protected IOrganizationService Service { get; private set; }
+
+    public void Execute(IServiceProvider serviceProvider)
+    {
+        Tracer = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+        var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+        var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+        Service = factory.CreateOrganizationService(context.UserId);
+        ExecutePluginLogic(context);
+    }
+
+    protected abstract void ExecutePluginLogic(IPluginExecutionContext context);
+}
+
+
+Then individual plugins inherit from it:
+
+public class ContactUpdatePlugin : BasePlugin
+{
+    protected override void ExecutePluginLogic(IPluginExecutionContext context)
+    {
+        // custom logic here
+    }
+}
+
+Each module can represent a team’s area or business capability.
+The Plugins.Core library provides shared base classes (for example, BasePlugin, TracingHelper, ServiceFactory).
+
+
+
+
+3. Unified Build and Deployment
+
+Use a solution folder or NuGet package consolidation to make builds consistent:
+
+Centralize common NuGet dependencies (Microsoft.CrmSdk.*, Newtonsoft.Json, etc.)
+
+Use a single CI/CD pipeline (Azure DevOps, GitHub Actions, etc.)
+
+Package all DLLs into one .zip or .nupkg for deployment using PAC CLI.
+
+You can also:
+
+Combine all plugin assemblies into one by using ILMerge or MSBuild tasks, or
+
+Keep separate assemblies and deploy them all via script.
+
+
+4. automated registration:
+Option 1: pac plugin push
+
+Registers all plugins from the DLL or directory:
+pac plugin push --connection "ProdConn" --assembly bin/Release/net8.0/Plugins.Account.dll
+
+
+Option 2: spkl
+
+Add a spkl.json file:
+
+{
+  "plugins": [
+    {
+      "assemblypath": "bin/Release/net8.0/Plugins.Account.dll",
+      "solution": "MySolution",
+      "profile": "debug",
+      "configuration": "debug"
+    }
+  ]
+}
+
+Then run:
+
+spkl plugins
+
+
+5. Recommended Patterns
+
+Dependency Injection: Use a lightweight DI container (like SimpleInjector or Autofac) within plugin constructors.
+
+Logging: Centralize all tracing to a shared class or table.
+
+Configuration: Store plugin settings in EnvironmentVariableDefinition or Dataverse configuration tables.
+
+Testing: Create a Plugins.Tests project with unit tests that mock the IPluginExecutionContext and IOrganizationService.
+
+6. folder-based organization with namespace:
+
+Plugins.Sales.Account.Create
+Plugins.Sales.Account.Update
+Plugins.Sales.Opportunity.Calculate
+Plugins.Support.Ticket.Assign
+Plugins.Support.Ticket.Close
+
+
+
