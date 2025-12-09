@@ -1,0 +1,156 @@
+let
+    // Connect to Dataverse
+    Source = CommonDataService.Database("https://yourorg.crm.dynamics.com")
+in
+    Source
+
+------------table 1----
+  let
+    Source = CommonDataService.Database("https://yourorg.crm.dynamics.com"),
+    SalesTable = Source{[Schema="dbo", Item="new_salesmetrics"]}[Data],
+
+    ChangedType = Table.TransformColumnTypes(SalesTable,{
+        {"new_month", type text},
+        {"new_year", Int64.Type},
+        {"new_revenue", type number}
+    }),
+
+    Renamed = Table.RenameColumns(ChangedType,{
+        {"new_revenue", "Value"},
+        {"new_month", "Month"},
+        {"new_year", "Year"}
+    }),
+
+    AddDataCard = Table.AddColumn(Renamed, "Data Card", each "Sales"),
+    AddDataElement = Table.AddColumn(AddDataCard, "Data Element", each "Revenue"),
+
+    Final = Table.SelectColumns(AddDataElement,{
+        "Month","Year","Data Card","Data Element","Value"
+    })
+in
+    Final
+
+      ---------table 2 ----
+      let
+    Source = CommonDataService.Database("https://yourorg.crm.dynamics.com"),
+    OpsTable = Source{[Schema="dbo", Item="new_operationsmetrics"]}[Data],
+
+    ChangedType = Table.TransformColumnTypes(OpsTable,{
+        {"new_month", type text},
+        {"new_year", Int64.Type},
+        {"new_ticketsclosed", Int64.Type}
+    }),
+
+    Renamed = Table.RenameColumns(ChangedType,{
+        {"new_ticketsclosed", "Value"},
+        {"new_month", "Month"},
+        {"new_year", "Year"}
+    }),
+
+    AddDataCard = Table.AddColumn(Renamed, "Data Card", each "Operations"),
+    AddDataElement = Table.AddColumn(AddDataCard, "Data Element", each "Tickets Closed"),
+
+    Final = Table.SelectColumns(AddDataElement,{
+        "Month","Year","Data Card","Data Element","Value"
+    })
+in
+    Final
+-----------------append into a single table
+      let
+    Sales = SalesMetrics,
+    Operations = OpsMetrics,
+
+    Combined = Table.Combine({Sales, Operations})
+in
+    Combined
+
+      ---------
+      ---------------------------------------------------
+              Monthly Performance Report
+                 For: {Month} {Year}
+---------------------------------------------------
+
+ Data Card       | Data Element        | Value
+---------------------------------------------------
+ Sales            | Revenue             | 120,000
+ Operations       | Tickets Closed      | 340
+ Finance          | Expenses            | 45,000
+ HR               | New Hires           | 12
+---------------------------------------------------
+ Generated On: {RunDate}
+
+----------------powerautomate json
+  {
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "triggers": {
+      "Recurrence": {
+        "type": "Recurrence",
+        "recurrence": {
+          "frequency": "Month",
+          "interval": 1
+        }
+      }
+    },
+    "actions": {
+      "Initialize_Month": {
+        "type": "InitializeVariable",
+        "inputs": {
+          "name": "varMonth",
+          "type": "string",
+          "value": "@{formatDateTime(utcNow(),'MMMM')}"
+        }
+      },
+      "Initialize_Year": {
+        "type": "InitializeVariable",
+        "inputs": {
+          "name": "varYear",
+          "type": "string",
+          "value": "@{formatDateTime(utcNow(),'yyyy')}"
+        }
+      },
+      "Export_Power_BI_Report": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['powerbi']['connectionId']"
+            }
+          },
+          "method": "post",
+          "path": "/v1.0/myorg/groups/{workspace-id}/reports/{report-id}/ExportTo",
+          "body": {
+            "format": "PDF"
+          }
+        },
+        "runAfter": {
+          "Initialize_Year": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Send_Email": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['office365']['connectionId']"
+            }
+          },
+          "method": "post",
+          "path": "/v2/Mail",
+          "body": {
+            "To": "manager@company.com",
+            "Subject": "Monthly Power BI Report",
+            "Body": "Please find attached monthly report."
+          }
+        },
+        "runAfter": {
+          "Export_Power_BI_Report": [
+            "Succeeded"
+          ]
+        }
+      }
+    }
+  }
+}
