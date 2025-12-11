@@ -154,3 +154,38 @@ in
     }
   }
 }
+
+========
+
+M parameter (created via Manage Parameters)
+
+p_MonthStart (Date) default: #date(2025,1,1)
+
+Query using parameter
+let
+    Source = CommonDataService.Database("https://yourorg.crm.dynamics.com"),
+    Tbl = Source{[Schema="dbo", Item="new_sales"]}[Data],
+    StartDate = p_MonthStart,
+    EndDate = Date.EndOfMonth(StartDate),
+    Filtered = Table.SelectRows(Tbl, each Date.From([createdon]) >= StartDate and Date.From([createdon]) <= EndDate)
+in
+    Filtered
+
+DAX months table (paste in Modeling → New table)
+MonthsParam =
+VAR MinDate = DATE(2020,1,1)
+VAR MaxDate = TODAY()
+RETURN
+DISTINCT(
+  SELECTCOLUMNS(
+    ADDCOLUMNS(
+      CALENDAR( MinDate, MaxDate ),
+      "MonthStart", DATE( YEAR([Date]), MONTH([Date]), 1 )
+    ),
+    "MonthStart", [MonthStart],
+    "Label", FORMAT([MonthStart], "MMM yyyy")
+  )
+)
+
+
+Bind MonthsParam[MonthStart] → Parameter p_MonthStart.
