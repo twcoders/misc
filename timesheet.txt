@@ -1,0 +1,266 @@
+Option A (RECOMMENDED): Model-Driven App with “Pay-Period Grid Entry”
+
+This is the best balance of:
+
+Licensing
+
+Governance
+
+Mobile/browser support
+
+Speed to build
+
+How It Works
+1️⃣ Timesheet = Header (unchanged)
+
+1 record per Employee + Pay Period
+
+Status: Draft → Submitted → Approved
+
+2️⃣ Timesheet Entries = Line Items (unchanged)
+
+One row per:
+
+Date
+
+Project
+
+Hours
+
+3️⃣ Single-Page Entry Experience (Key Part)
+
+On the Timesheet Main Form:
+
+Tab: Pay Period Entry
+
+Use:
+
+Editable Subgrid (VERY important)
+
+Editable Subgrid Settings
+
+Table: Timesheet Entry
+
+View: “Entries for Current Pay Period”
+
+Grouped by Work Date
+
+Inline editing enabled
+
+“Add New Row” enabled
+
+➡️ User scrolls and enters 2 weeks of data in one place
+➡️ No navigation between screens
+➡️ Works on browser + tablet + phone
+
+Example User Experience
+Mon Jan 1   | Project A | 8.0
+            | Project B | 2.0
+Tue Jan 2   | Project A | 6.5
+Wed Jan 3   | Project C | 8.0
+...
+Fri Jan 12  | Project A | 7.5
+
+
+Then:
+👉 Click Submit Timesheet
+
+Submission Logic (Still Enforced)
+Submit Button Rules
+
+Submit button is visible ONLY when:
+
+Timesheet.Status = Draft
+AND Today > PayPeriod.EndDate
+
+
+When clicked:
+
+Validate total hours
+
+Lock entries
+
+Change status → Submitted
+
+Trigger approval flow
+
+=============================================
+
+## 1. Entity Relationship Diagram (ERD)
+
+```
+┌────────────┐        ┌──────────────┐
+│  System    │1      *│  Timesheet   │
+│  User      ├────────┤  (Header)    │
+│ (Employee) │        │  *One per*   │
+└─────┬──────┘        │  *PayPeriod* │
+      │ Supervisor    └─────┬────────┘
+      │                     │1
+┌─────▼────────┐             │*
+│  System User │      ┌─────▼───────────┐
+│ (Supervisor) │      │ Timesheet Entry │
+└──────────────┘      │   (Daily Lines) │
+                      └─────┬───────────┘
+                             │*
+                             │1
+                      ┌──────▼───────┐
+                      │   Project    │
+                      └──────────────┘
+
+┌──────────────┐1     *┌────────────────────┐
+│  Pay Period  ├───────┤  Timesheet         │
+│ (Must End    │       │  Audit / Version   │
+│  Before      │       └────────────────────┘
+│  Submit)     │
+└──────────────┘
+
+```
+
+---
+
+## 2. Dataverse Tables & Exact Column Definitions
+
+### A. Project Table
+**Schema name:** `crb_project`
+
+| Display Name | Schema Name | Type | Notes |
+|-------------|------------|------|------|
+| Project Name | crb_name | Text (100) | Required |
+| Project Code | crb_projectcode | Text (50) | Optional |
+| Active | crb_active | Yes/No | Default: Yes |
+
+---
+
+### B. Pay Period Table
+**Schema name:** `crb_payperiod`
+
+| Display Name | Schema Name | Type | Notes |
+|-------------|------------|------|------|
+| Name | crb_name | Text (100) | e.g., 2025 Jan 1–15 |
+| Start Date | crb_startdate | Date Only | Required |
+| End Date | crb_enddate | Date Only | Required |
+| Status | crb_status | Choice | Open, Locked |
+
+---
+
+### C. Timesheet (Header)
+**Schema name:** `crb_timesheet`
+
+> **Business Rule:** Only **one Timesheet per Employee per Pay Period**. Submission is **disabled until Pay Period End Date**.
+
+| Display Name | Schema Name | Type | Notes |
+|-------------|------------|------|------|
+| Employee | crb_employee | Lookup (System User) | Required |
+| Supervisor | crb_supervisor | Lookup (System User) | Derived |
+| Pay Period | crb_payperiod | Lookup | Required |
+| Status | crb_status | Choice | Draft, Ready to Submit, Submitted, Approved, Correction Requested, Resubmitted, Re-Approved |
+| Submitted On | crb_submittedon | DateTime | Set only after period ends |
+| Approved On | crb_approvedon | DateTime | Set by approval |
+| Current Version | crb_version | Whole Number | Default: 1 |
+| Total Hours | crb_totalhours | Decimal (2) | Calculated/Rollup |
+
+**Alternate Key (Enforced Uniqueness):**
+- Employee + Pay Period
+
+-------------|------------|------|------|
+| Employee | crb_employee | Lookup (System User) | Owner of timesheet |
+| Supervisor | crb_supervisor | Lookup (System User) | Derived from user |
+| Pay Period | crb_payperiod | Lookup | Required |
+| Status | crb_status | Choice | Draft, Submitted, Approved, Correction Requested, Resubmitted, Re-Approved |
+| Submitted On | crb_submittedon | DateTime | Set by flow |
+| Approved On | crb_approvedon | DateTime | Set by flow |
+| Current Version | crb_version | Whole Number | Default: 1 |
+| Total Hours | crb_totalhours | Decimal (2) | Rollup or calculated |
+
+---
+
+### D. Timesheet Entry (Daily Line Items)
+**Schema name:** `crb_timesheetentry`
+
+> Users may **save entries daily** throughout the pay period. Entries remain editable while Timesheet Status = Draft.
+
+| Display Name | Schema Name | Type | Notes |
+|-------------|------------|------|------|
+| Timesheet | crb_timesheet | Lookup | Required |
+| Work Date | crb_workdate | Date Only | Must fall within Pay Period |
+| Project | crb_project | Lookup | Required |
+| Hours | crb_hours | Decimal (2) | Required |
+| Notes | crb_notes | Multiline Text | Optional |
+| Entry Status | crb_entrystatus | Choice | Active, Superseded |
+
+-------------|------------|------|------|
+| Timesheet | crb_timesheet | Lookup | Parent |
+| Work Date | crb_workdate | Date Only | Required |
+| Project | crb_project | Lookup | Required |
+| Hours | crb_hours | Decimal (2) | Required |
+| Notes | crb_notes | Multiline Text | Optional |
+| Entry Status | crb_entrystatus | Choice | Active, Superseded |
+
+---
+
+### E. Timesheet Audit / Version History
+**Schema name:** `crb_timesheetaudit`
+
+| Display Name | Schema Name | Type | Notes |
+|-------------|------------|------|------|
+| Timesheet | crb_timesheet | Lookup | Required |
+| Version Number | crb_versionnumber | Whole Number | Snapshot version |
+| Changed By | crb_changedby | Lookup (User) | Auto |
+| Changed On | crb_changedon | DateTime | Auto |
+| Change Reason | crb_changereason | Text (250) | Optional |
+| Snapshot JSON | crb_snapshotjson | Multiline Text | Stores old data |
+
+---
+
+## 3. Model-Driven App Sitemap Recommendation
+
+### Area 1: **My Timesheet** (Employees)
+- Current Pay Period Timesheet *(auto-created)*
+- Daily Time Entry
+- Ready to Submit (visible only after period end)
+- Past Timesheets (Read-only)
+
+### Area 2: **Approvals** (Supervisors)
+- Pending Approvals
+- Returned for Correction
+- Approved Timesheets
+
+### Area 3: **Reference Data** (Admins)
+- Projects
+- Pay Periods
+
+### Area 4: **Audit & Reports**
+- Timesheet Version History
+- Timesheet Audit Records
+
+---
+
+## 4. Key Business Rules (Critical)
+
+1. **One Timesheet per Employee per Pay Period**
+   - Enforced via Dataverse Alternate Key
+
+2. **Daily Save Allowed**
+   - Timesheet remains in Draft during pay period
+
+3. **Submission Locked Until Period End**
+   - Submit button enabled only when:
+     - Today > PayPeriod.EndDate
+     - Status = Draft or Ready to Submit
+
+4. **No Editing After Submission**
+   - Except via Correction workflow
+
+---
+
+## 5. Implementation Notes
+
+- Auto-create Timesheet when pay period starts or first entry is saved
+- Use Business Rules for field locking
+- Use JavaScript or Power Automate for Submit enablement logic
+
+---
+
+This updated model strictly enforces your new requirement while remaining mobile-friendly and audit-safe.
+
+```
