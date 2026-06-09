@@ -1,0 +1,23 @@
+Agent buikder, Copilot Studio, AI Foundary.
+Build Copilot Studio Agents using the studio or in VS Code Using Natural Language
+
+
+Copilot Studio Agent Bot
+User Prompt ---> Agent ai generative orchestration --> select agent/topic/kb --> return to user
+
+
+Copilot Studio Multi-Agent Bot
+User Prompt ---> Parent Agent ai generative orchestration --> select child agent/external agent/
+separate agent/topic/kb --> return to user
+
+
+Copilot Agent in Model-driven app 
+User Prompt ---> process request --> return to user with matching ux/ui as in model-driven app
+
+<org>/api/copilot/v1.0/textdatastatus
+
+
+
+
+
+
