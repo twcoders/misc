@@ -1,0 +1,30 @@
+https://www.google.com/search?q=tinu+mce+editor+pcf&sca_esv=f4c500ed9085b262&sxsrf=APpeQnsUhqs7oARUglKIvIQyv0lihqsz8Q%3A1782334067426&ei=c0I8apvHFs-x5NoP35vW2Q8&iflsig=ABILxe8AAAAAajxQg8kC0hFFoYC_ku_tI-L1PBFwoUDP&uact=5&sclient=gws-wiz&udm=50&fbs=ABfTbFVyMZGZf1hfvX9uKjN_-G8c4u0nXx4bEIpwm1lnNH832SMIiTl3t-JZ4hGJOxPbHYQR84vEJkyW62ul7Q3Bkhu9i-p_ALr7slx3OYYzZdb8Ie3_0xt4GO-v5dZLSACYYJegBZ_c7DJaWGUhzWcLUe7xiY0SN8j-2FrBD22eAej1aQeKiNIeh3-nrksGJiz2lGuP-ss7qxuJLfaGhCyXfKiiiJRvMA&aep=10&ntc=1&mstk=AUtExfCigBs10Pr0rjmd2zJNG7PN7Mie9YQWwm0JLFTK2EWrJTDF0Wr5q-ijln4nN_24g6nsgdWKShJwykd1hbLr2Pn70tgx4RgDhQh2MnQBdQmRrIbcj1aRi3eZwvYQgnxkRRIpt-MLcuy4j10utVD4GUgIO_gdrytqP58&aioh=3&csuir=1&cs=0&sourceid=chrome&ccb=1&hl=en-US&biw=2240&bih=1076&mtid=-UI8atqEHKqq5NoPg4yy-Qw
+
+typescriptimport { createEditor } from './tinymce/tinymce.min.js'; 
+
+public init(context: ComponentFramework.Context<IInputs>, notifyOutputChanged: () => void, container: HTMLDivElement): void {
+    // Create a textarea element for the editor to bind to
+    const textArea = document.createElement("textarea");
+    textArea.id = "pcf-tinymce-editor";
+    container.appendChild(textArea);
+
+    // Initialize the self-hosted editor
+    (window as any).tinymce.init({
+        selector: '#pcf-tinymce-editor',
+        
+        // CRITICAL FOR SELF-HOSTING: Tell TinyMCE where the sub-folders live
+        base_url: '/WebResources/your_publisher_prefix_/tinymce', 
+        suffix: '.min',
+        
+        // Define your layout configuration
+        plugins: 'lists link table code', 
+        toolbar: 'undo redo | styles | bold italic | alignleft aligncenter alignright | lists table',
+        
+        setup: (editor: any) => {
+            editor.on('change', () => {
+                const content = editor.getContent();
+                // Pass content back to Power Apps field here
+            });
+        }
+    });
+}
